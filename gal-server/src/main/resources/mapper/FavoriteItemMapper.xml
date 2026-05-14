@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.catgal.server.mapper.FavoriteItemMapper">
+
+    <delete id="deleteByFolderIds">
+        DELETE FROM favorite_item
+        WHERE folder_id IN
+        <foreach collection="folderIds" item="folderId" open="(" separator="," close=")">
+            #{folderId}
+        </foreach>
+    </delete>
+
+</mapper>

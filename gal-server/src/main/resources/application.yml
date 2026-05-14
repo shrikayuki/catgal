@@ -1,0 +1,36 @@
+spring:
+  profiles:
+    active: dev
+  application:
+    name: catgal
+
+server:
+  port: 8080
+
+
+logging:
+  level:
+    com.gal: DEBUG
+    org.springframework.web: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.catgal.server.domain.po
+
+aliyun:
+  oss:
+    endpoint: your
+    access-key-id: your
+    access-key-secret: your
+    bucket-name: your
