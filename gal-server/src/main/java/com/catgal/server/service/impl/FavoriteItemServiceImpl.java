@@ -97,7 +97,7 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
                     .build();
             mqHelper.send(FAVORITE_EXCHANGE, FAVORITE_CHANGE_KEY, message);
         } else {
-            redisTemplate.opsForSet().add(GAME_COUNT_CHANGE_SET_KEY, gameId.toString());
+            redisTemplate.opsForSet().add(GAME_FAVORITE_COUNT_CHANGE_SET_KEY, gameId.toString());
         }
         log.info("收藏成功, userId={}, gameId={}, folderId={}", userId, gameId, folderId);
         return true;
@@ -148,7 +148,7 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
                     .build();
             mqHelper.send(FAVORITE_EXCHANGE, FAVORITE_CHANGE_KEY, message);
         } else {
-            redisTemplate.opsForSet().add(GAME_COUNT_CHANGE_SET_KEY, gameId.toString());
+            redisTemplate.opsForSet().add(GAME_FAVORITE_COUNT_CHANGE_SET_KEY, gameId.toString());
         }
 
         log.info("取消收藏成功, userId={}, gameId={}, folderId={}", userId, gameId, folderId);
