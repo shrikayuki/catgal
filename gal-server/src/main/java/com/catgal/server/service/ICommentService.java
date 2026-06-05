@@ -28,7 +28,7 @@ public interface ICommentService extends IService<Comment> {
 
     void replyComment(@Valid ReplyCommentDTO dto);
 
-    PageDTO<CommentVO> getChildComments(Long parentId, PageQuery query);
+    PageDTO<CommentVO> getChildComments(Long replyCommentId, PageQuery query);
 
     void deleteComment(Long id);
 }

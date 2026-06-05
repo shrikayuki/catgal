@@ -8,7 +8,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.1.5</version>
+        <version>3.4.5</version>
         <relativePath/>
     </parent>
 
@@ -29,7 +29,7 @@
         <!-- 统一管理第三方依赖版本 -->
         <mysql.version>8.1.0</mysql.version>
         <mybatis-plus.version>3.5.5</mybatis-plus.version>
-        <aliyun.oss.version>3.17.4</aliyun.oss.version>
+        <aliyun.oss.version>3.18.1</aliyun.oss.version>
         <druid.version>1.2.20</druid.version>
         <!-- 添加 Swagger 版本 -->
         <springdoc.version>2.6.0</springdoc.version>
@@ -38,10 +38,38 @@
         <!-- 添加jwt 版本 -->
         <jjwt.version>0.12.6</jjwt.version>
 
-        <spring-boot.version>3.1.5</spring-boot.version>
+        <spring-boot.version>3.4.5</spring-boot.version>
 
         <caffeine.version>3.1.8</caffeine.version>
+
+        <spring-ai-alibaba.version>1.0.0.2</spring-ai-alibaba.version>
+        <spring-ai.version>1.0.0</spring-ai.version>
     </properties>
+
+    <!-- ========== 仓库配置（两个仓库都需要） ========== -->
+    <repositories>
+        <!-- 阿里云仓库：存放 Spring AI Alibaba 组件 -->
+        <repository>
+            <id>aliyun-maven</id>
+            <name>阿里云公共仓库</name>
+            <url>https://maven.aliyun.com/repository/public</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        <!-- Spring Milestones：存放 Spring AI 官方 BOM -->
+        <repository>
+            <id>spring-milestones</id>
+            <name>Spring Milestones</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
 
     <dependencyManagement>
         <dependencies>
@@ -90,6 +118,25 @@
                 <artifactId>caffeine</artifactId>
                 <version>${caffeine.version}</version>
             </dependency>
+
+            <!-- ========== Spring AI BOM（官方） ========== -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- ========== Spring AI Alibaba BOM（阿里适配） ========== -->
+            <dependency>
+                <groupId>com.alibaba.cloud.ai</groupId>
+                <artifactId>spring-ai-alibaba-bom</artifactId>
+                <version>${spring-ai-alibaba.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
         </dependencies>
 
     </dependencyManagement>
@@ -154,6 +201,7 @@
             <artifactId>druid-spring-boot-3-starter</artifactId>
             <version>${druid.version}</version>
         </dependency>
+
     </dependencies>
 
     <build>

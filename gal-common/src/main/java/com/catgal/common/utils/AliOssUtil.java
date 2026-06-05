@@ -7,6 +7,7 @@ import com.aliyun.oss.OSSException;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
 
@@ -48,9 +49,8 @@ public class AliOssUtil {
                     + "such as not being able to access the network.");
             System.out.println("Error Message:" + ce.getMessage());
         } finally {
-            if (ossClient != null) {
-                ossClient.shutdown();
-            }
+            ossClient.shutdown();
+
         }
 
         //文件访问路径规则 https://BucketName.Endpoint/ObjectName

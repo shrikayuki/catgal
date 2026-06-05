@@ -22,6 +22,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.catgal.common.constants.MqConstants.Exchange.LIKE_COUNT_EXCHANGE;
+import static com.catgal.common.constants.MqConstants.Key.BIZ_TYPE_LIKED_TIMES_KEY;
 import static com.catgal.common.constants.MqConstants.Queue.LIKE_COUNT_QUEUE_TEMPLATE;
 import static com.catgal.common.constants.RedisConstant.*;
 
@@ -241,6 +242,7 @@ public class LikeRecordServiceImpl extends ServiceImpl<LikeRecordMapper, LikeRec
 
             if (likeCount == null || likeCount == 0) {
                 // 点赞数为0，不需要处理（已经在 pop 时移除了）
+                log.debug("跳过 bizId={}, likeCount=0", bizId);
                 continue;
             }
 
@@ -255,7 +257,7 @@ public class LikeRecordServiceImpl extends ServiceImpl<LikeRecordMapper, LikeRec
         if (!allMessages.isEmpty()) {
             mqHelper.send(
                     LIKE_COUNT_EXCHANGE,
-                    StringUtils.format(LIKE_COUNT_QUEUE_TEMPLATE, bizType),
+                    StringUtils.format(BIZ_TYPE_LIKED_TIMES_KEY, bizType),
                     allMessages
             );
             log.info("发送点赞数消息, bizType={}, 数量={}", bizType, allMessages.size());

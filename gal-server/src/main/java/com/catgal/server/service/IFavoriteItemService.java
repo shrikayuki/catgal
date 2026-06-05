@@ -19,5 +19,7 @@ public interface IFavoriteItemService extends IService<FavoriteItem> {
 
     Boolean unfavorite(@Valid FavoriteDTO dto);
 
+    Boolean unfavoriteBatch(Long folderId);
+
     void fullSyncFavoriteItemsToDBTask(Integer batchSize);
 }

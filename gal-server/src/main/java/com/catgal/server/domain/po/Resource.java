@@ -32,7 +32,7 @@ public class Resource implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    @TableId(value = "id", type = IdType.ASSIGN_ID)
+    @TableId(value = "id", type = IdType.AUTO)
     @Schema(description = "资源ID", example = "1")
     private Long id;
 

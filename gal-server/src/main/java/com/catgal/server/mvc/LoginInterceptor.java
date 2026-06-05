@@ -15,10 +15,13 @@ import org.springframework.web.servlet.HandlerInterceptor;
 @RequiredArgsConstructor
 public class LoginInterceptor implements HandlerInterceptor {
 
-    private final JwtUtils jwtUtils;
+
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        log.info("=== LoginInterceptor 执行了 ===");
+        log.info("请求路径: {}", request.getRequestURI());
+        log.info("Authorization: {}", request.getHeader("Authorization"));
         // 1. 从请求头获取 token
         String token = request.getHeader("Authorization");
         
@@ -27,11 +30,11 @@ public class LoginInterceptor implements HandlerInterceptor {
         }
         
         // 2. 验证 token
-        if (token != null && jwtUtils.validateToken(token)) {
+        if (token != null && JwtUtils.validateToken(token)) {
             // 3. 解析用户信息
-            Long userId = jwtUtils.getUserId(token);
-            String username = jwtUtils.getUsername(token);
-            Integer role = jwtUtils.getRole(token);
+            Long userId = JwtUtils.getUserId(token);
+            String username = JwtUtils.getUsername(token);
+            Integer role = JwtUtils.getRole(token);
             
             // 4. 存入 ThreadLocal
             UserInfo userInfo = UserInfo.builder()

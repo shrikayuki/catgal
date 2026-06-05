@@ -42,10 +42,10 @@ public class CommentController {
         return R.ok(vo);
     }
 
-    @GetMapping("/reply/{parentId}")
-    @Operation(summary = "查看根评论下的子评论")
-    public R<PageDTO<CommentVO>> getChildComments(@PathVariable Long parentId, PageQuery query) {
-        PageDTO<CommentVO> page = commentService.getChildComments(parentId, query);
+    @GetMapping("/reply/{replyCommentId}")
+    @Operation(summary = "查看某个评论下的回复")
+    public R<PageDTO<CommentVO>> getChildComments(@PathVariable Long replyCommentId, PageQuery query) {
+        PageDTO<CommentVO> page = commentService.getChildComments(replyCommentId, query);
         return R.ok(page);
     }
 

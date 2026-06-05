@@ -1,7 +1,7 @@
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://your/catgal?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&characterEncoding=utf8
+    url: jdbc:mysql://192.168.150.104/catgal?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&characterEncoding=utf8
     username: root
     password: catgal2024
     druid:
@@ -12,7 +12,7 @@ spring:
 
   data:
     redis:
-      host: your
+      host: 192.168.150.104
       port: 6379
       password: catgal2024
       database: 0
@@ -24,14 +24,23 @@ spring:
           min-idle: 0
 
   rabbitmq:
-    host: your
+    host: 192.168.150.104
     port: 5672
     username: catgal
     password: catgal2024
     virtual-host: /
 
+    # ========== AI 配置 ==========
+  ai:
+    dashscope:
+      api-key: ${API_KEY}  # 替换成你的真实 API Key
+      chat:
+        options:
+          model: qwen-plus
+          temperature: 0.8
+      embedding:
+        options:
+          model: text-embedding-v4  # 使用最新的 V4 版本
+          dimensions: 1024  # 可选，V3/V4 支持自定义维度
 
 
-logging:
-  level:
-    com.gal: DEBUG

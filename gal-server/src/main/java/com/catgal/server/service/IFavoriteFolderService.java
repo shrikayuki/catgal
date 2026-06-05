@@ -24,5 +24,7 @@ public interface IFavoriteFolderService extends IService<FavoriteFolder> {
     void deleteFolder(Long id);
 
 
+    Integer getGameCountFromfolder(Long folderId);
+
     PageDTO<FolderGameVO> getGamesById(Long id, PageQuery query);
 }

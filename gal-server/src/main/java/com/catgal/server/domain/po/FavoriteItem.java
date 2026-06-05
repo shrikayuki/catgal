@@ -28,7 +28,7 @@ public class FavoriteItem implements Serializable {
     /**
      * 收藏明细ID
      */
-    @TableId(value = "id", type = IdType.ASSIGN_ID)
+    @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
     /**

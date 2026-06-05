@@ -30,6 +30,7 @@ import java.util.stream.Collectors;
 
 import static com.catgal.common.constants.LikeBizTypeConstant.LIKE_TYPE_RESOURCE;
 import static com.catgal.common.constants.LikeBizTypeConstant.LIKE_TYPE_REVIEW;
+import static com.catgal.common.constants.RedisConstant.GAME_DOWNLOAD_COUNT_KEY;
 import static com.catgal.common.constants.RedisConstant.RESOURCE_DOWNLOAD_COUNT_KEY;
 import static com.catgal.common.constants.ResourceConstant.OFFICIAL_RESOURCE;
 import static com.catgal.common.constants.UserRoleConstant.*;
@@ -133,6 +134,8 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceMapper, Resource> i
         if (resource == null) {
             throw new RuntimeException("404");
         }
+        Long gameId = resource.getGameId();
+        redisTemplate.opsForValue().increment(StringUtils.format(GAME_DOWNLOAD_COUNT_KEY, gameId));
         redisTemplate.opsForValue().increment(StringUtils.format(RESOURCE_DOWNLOAD_COUNT_KEY, id));
         return resource.getDownloadUrl();
     }
@@ -159,6 +162,7 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceMapper, Resource> i
             // 设置用户信息
             User user = userMap == null ? null : userMap.get(r.getUserId());
             if (user != null) {
+
                 vo.setUsername(user.getUsername());
                 vo.setAvatarUrl(user.getAvatarUrl());
             }

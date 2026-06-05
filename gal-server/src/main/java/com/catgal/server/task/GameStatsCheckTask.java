@@ -25,26 +25,26 @@ public class GameStatsCheckTask {
         statsService.checkFavoriteTimes(GAME_FAVORITE_COUNT_CHANGE_SET_KEY, BATCH_SIZE);
     }
 
-    @Async("asyncTaskExecutor")
-    @Scheduled(cron = "0/10 * * * * ?")
-    public void checkLookTimes() {
-        log.info("===== checkLookTimes 执行了 =====");
-        statsService.checkFavoriteTimes(GAME_LOOK_COUNT_CHANGE_SET_KEY, BATCH_SIZE);
-    }
-
-    @Async("asyncTaskExecutor")
-    @Scheduled(cron = "0/10 * * * * ?")
-    public void checkCommentTimes() {
-        log.info("===== checkCommentTimes 执行了 =====");
-        statsService.checkFavoriteTimes(GAME_COMMENT_COUNT_CHANGE_SET_KEY, BATCH_SIZE);
-    }
-
-    @Async("asyncTaskExecutor")
-    @Scheduled(cron = "0/10 * * * * ?")
-    public void checkReviewTimes() {
-        log.info("===== checkReviewTimes 执行了 =====");
-        statsService.checkFavoriteTimes(GAME_REVIEW_COUNT_CHANGE_SET_KEY, BATCH_SIZE);
-    }
+//    @Async("asyncTaskExecutor")
+//    @Scheduled(cron = "0/10 * * * * ?")
+//    public void checkLookTimes() {
+//        log.info("===== checkLookTimes 执行了 =====");
+//        statsService.checkFavoriteTimes(GAME_LOOK_COUNT_CHANGE_SET_KEY, BATCH_SIZE);
+//    }
+//
+//    @Async("asyncTaskExecutor")
+//    @Scheduled(cron = "0/10 * * * * ?")
+//    public void checkCommentTimes() {
+//        log.info("===== checkCommentTimes 执行了 =====");
+//        statsService.checkFavoriteTimes(GAME_COMMENT_COUNT_CHANGE_SET_KEY, BATCH_SIZE);
+//    }
+//
+//    @Async("asyncTaskExecutor")
+//    @Scheduled(cron = "0/10 * * * * ?")
+//    public void checkReviewTimes() {
+//        log.info("===== checkReviewTimes 执行了 =====");
+//        statsService.checkFavoriteTimes(GAME_REVIEW_COUNT_CHANGE_SET_KEY, BATCH_SIZE);
+//    }
 
 
 
