@@ -62,7 +62,7 @@ public class Game implements Serializable {
     private LocalDate releaseDate;
 
     /**
-     * 游戏评分，0-10分，保留两位小数
+     * 游戏评分，0-10分，保留一位小数
      */
     private BigDecimal rating;
 

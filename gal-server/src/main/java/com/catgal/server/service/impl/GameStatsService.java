@@ -3,23 +3,27 @@ package com.catgal.server.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.catgal.common.utils.CollUtils;
 import com.catgal.common.utils.StringUtils;
+import com.catgal.server.domain.po.Comment;
 import com.catgal.server.domain.po.Game;
+import com.catgal.server.domain.po.GameReview;
 import com.catgal.server.domain.po.Resource;
+import com.catgal.server.mapper.CommentMapper;
 import com.catgal.server.mapper.GameMapper;
+import com.catgal.server.mapper.GameReviewMapper;
 import com.catgal.server.mapper.ResourceMapper;
-import com.catgal.server.service.IGameService;
 import com.catgal.server.service.IGameStatsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.catgal.common.constants.RedisConstant.*;
@@ -32,20 +36,30 @@ public class GameStatsService implements IGameStatsService{
     private final StringRedisTemplate redisTemplate;
     private final GameMapper gameMapper;
     private final ResourceMapper resourceMapper;
+    private final CommentMapper commentMapper;
+    private final GameReviewMapper gameReviewMapper;
+
+    @Override
+    public Integer getGameReviewCount(Long id){
+        String key = StringUtils.format(REVIEW_COUNT_KEY,id);
+        String value = redisTemplate.opsForValue().get(key);
+        if(value == null){
+            return gameReviewMapper.selectCount(
+                    new LambdaQueryWrapper<GameReview>()
+                            .eq(GameReview::getGameId, id)
+                            .eq(GameReview::getStatus, 1)
+            ).intValue();
+
+        }
+        return Integer.parseInt(value);
+    }
 
     @Override
     public Integer getGameLookCount(Long id) {
         String key = StringUtils.format(LOOK_COUNT_KEY, id);
         String value = redisTemplate.opsForValue().get(key);
         if (value == null) {
-            // 缓存未命中，从数据库查
-            Game game = gameMapper.selectById(id);
-            if (game == null) {
-                return 0;
-            }
-            // 回写缓存
-            redisTemplate.opsForValue().set(key, String.valueOf(game.getViewCount()), 1, TimeUnit.HOURS);
-            return game.getViewCount();
+            return -1;
         }
         return Integer.parseInt(value);
     }
@@ -55,14 +69,7 @@ public class GameStatsService implements IGameStatsService{
         String key = StringUtils.format(FAVORITE_COUNT_KEY, gameId);
         String value = redisTemplate.opsForValue().get(key);
         if (value == null) {
-            // 缓存未命中，从数据库查
-            Game game = gameMapper.selectById(gameId);
-            if (game == null) {
-                return 0;
-            }
-            // 回写缓存
-            redisTemplate.opsForValue().set(key, String.valueOf(game.getFavoriteCount()), 1, TimeUnit.HOURS);
-            return game.getFavoriteCount();
+            return -1;
         }
         return Integer.parseInt(value);
     }
@@ -73,16 +80,70 @@ public class GameStatsService implements IGameStatsService{
         String value = redisTemplate.opsForValue().get(key);
         if (value == null) {
             // 缓存未命中，从数据库统计资源数量
-            Integer count = resourceMapper.selectCount(
+
+            return resourceMapper.selectCount(
                     new LambdaQueryWrapper<Resource>()
                             .eq(Resource::getGameId, gameId)
                             .eq(Resource::getStatus, 1)
             ).intValue();
-            // 回写缓存
-            redisTemplate.opsForValue().set(key, String.valueOf(count), 1, TimeUnit.HOURS);
+        }
+        return Integer.parseInt(value);
+    }
+
+    @Override
+    public Integer getGameDownLoadCount(Long id) {
+        String key = StringUtils.format(GAME_DOWNLOAD_COUNT_KEY, id);
+        String countStr = redisTemplate.opsForValue().get(key);
+        if (countStr == null) {
+            return -1;
+        }
+        return Integer.parseInt(countStr);
+    }
+
+    @Override
+    public Integer getGameCommentCount(Long id) {
+        String key = StringUtils.format(COMMENT_COUNT_KEY, id);
+        String value = redisTemplate.opsForValue().get(key);
+        if (value == null) {
+            // 缓存未命中，从数据库统计资源数量
+            Integer count = commentMapper.selectCount(
+                    new LambdaQueryWrapper<Comment>()
+                            .eq(Comment::getGameId, id)
+                            .eq(Comment::getStatus, 1)
+            ).intValue();
+
             return count;
         }
         return Integer.parseInt(value);
+    }
+
+    @Override
+    public BigDecimal getRating(Long id) {
+        String key = String.format(GAME_RATING_KEY, id);
+
+        Long count = redisTemplate.opsForZSet().size(key);
+        if (count == null || count == 0) {
+            return BigDecimal.ZERO;
+        }
+
+        double sum = 0.0;
+        int batchSize = 1000;
+        int offset = 0;
+
+        while (offset < count) {
+            Set<ZSetOperations.TypedTuple<String>> batch =
+                    redisTemplate.opsForZSet().rangeWithScores(key, offset, offset + batchSize - 1);
+
+            if (batch != null && !batch.isEmpty()) {
+                for (ZSetOperations.TypedTuple<String> tuple : batch) {
+                    sum += tuple.getScore();
+                }
+            }
+            offset += batchSize;
+        }
+
+        double avg = sum / count;
+        return BigDecimal.valueOf(avg).setScale(1, RoundingMode.HALF_UP);
     }
 
     @Override
@@ -90,22 +151,13 @@ public class GameStatsService implements IGameStatsService{
         String key = StringUtils.format(RESOURCE_DOWNLOAD_COUNT_KEY, resourceId);
         String value = redisTemplate.opsForValue().get(key);
 
-        if (value != null) {
-            return Integer.parseInt(value);
+        if (value == null) {
+            return -1;
         }
 
-        // 缓存未命中，查数据库
-        Resource resource = resourceMapper.selectById(resourceId);
-        if (resource == null) {
-            return 0;
-        }
 
-        Integer downloadCount = resource.getDownloadCount();
 
-        // 回写缓存（5分钟过期）
-        redisTemplate.opsForValue().set(key, String.valueOf(downloadCount), 5, TimeUnit.MINUTES);
-
-        return downloadCount;
+        return Integer.parseInt(value);
     }
 
     @Override
@@ -145,20 +197,5 @@ public class GameStatsService implements IGameStatsService{
         }
 
         log.info("收藏数同步完成, 共处理 {} 个游戏", totalProcessed);
-    }
-
-    @Override
-    public Integer getGameDownLoadCount(Long id) {
-        return 0;
-    }
-
-    @Override
-    public Integer getGameCommentCount(Long id) {
-        return 0;
-    }
-
-    @Override
-    public BigDecimal getRating(Long id) {
-        return null;
     }
 }

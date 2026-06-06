@@ -15,7 +15,9 @@ import com.catgal.server.service.IFavoriteItemService;
 import com.catgal.server.service.IGameService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.catgal.server.service.IGameStatsService;
+import com.catgal.server.task.GameIdsCacheTask;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -34,11 +36,13 @@ import static com.catgal.common.constants.RedisConstant.LOOK_COUNT_KEY;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class GameServiceImpl extends ServiceImpl<GameMapper, Game> implements IGameService {
 
     private final IFavoriteItemService favoriteItemService;
     private final StringRedisTemplate redisTemplate;
     private final IGameStatsService statsService;
+    private final GameIdsCacheTask gameIdsCacheTask;
 
 
     @Override
@@ -96,12 +100,26 @@ public class GameServiceImpl extends ServiceImpl<GameMapper, Game> implements IG
         vo.setResourceTypes(game.getTypeList());
         vo.setLanguages(game.getLanguageList());
         vo.setPlatforms(game.getPlatformList());
-        //统计数
+        //统计数 未命中 查库
+        vo.setReviewCount(statsService.getGameReviewCount(game.getId()));
         vo.setCommentCount(statsService.getGameCommentCount(id));
-        vo.setDownloadCount(statsService.getGameDownLoadCount(id));
         vo.setResourceCount(statsService.getGameResourceCount(id));
-        vo.setFavoriteCount(statsService.getGameFavoriteCount(id));
-        vo.setViewCount(statsService.getGameLookCount(id));
+        //不查库的
+        Integer gameDownLoadCount = statsService.getGameDownLoadCount(id);
+        if (gameDownLoadCount != -1){
+            vo.setDownloadCount(gameDownLoadCount);
+        }
+
+        Integer gameFavoriteCount = statsService.getGameFavoriteCount(id);
+        if (gameFavoriteCount != -1) {
+            vo.setFavoriteCount(gameFavoriteCount);
+        }
+
+        Integer gameLookCount = statsService.getGameLookCount(id);
+        if (gameLookCount != -1) {
+            vo.setViewCount(gameLookCount);
+        }
+
         vo.setRating(statsService.getRating(id));
         //TODO 标签 会社待实现
 
@@ -116,15 +134,26 @@ public class GameServiceImpl extends ServiceImpl<GameMapper, Game> implements IG
         vo.setId(game.getId());
         vo.setName(game.getName());
         vo.setCoverUrl(game.getCoverUrl());
+        //统计数
         vo.setCommentCount(statsService.getGameCommentCount(id));
-        vo.setDownloadCount(statsService.getGameDownLoadCount(id));
-        vo.setResourceCount(statsService.getGameResourceCount(id));
+
+        Integer gameDownLoadCount = statsService.getGameDownLoadCount(id);
+        if (gameDownLoadCount != -1){
+            vo.setDownloadCount(gameDownLoadCount);
+        }
+        vo.setResourceCount(null);
         vo.setFavoriteCount(statsService.getGameFavoriteCount(id));
         vo.setViewCount(statsService.getGameLookCount(id));
         vo.setRating(statsService.getRating(id));
+
         vo.setResourceTypes(game.getTypeList());
         boolean isMyFavorite = one != null;
         vo.setIsFavorite(isMyFavorite);
         return vo;
+    }
+
+    @Override
+    public GameVO getRandomGame() {
+        return getGameById(gameIdsCacheTask.getRandomGameId());
     }
 }

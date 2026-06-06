@@ -1,7 +1,8 @@
 package com.catgal.common.autoconfigure.mq;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.catgal.common.utils.StringUtils;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.slf4j.MDC;
 import org.springframework.amqp.core.*;
 import org.springframework.amqp.rabbit.config.ContainerCustomizer;

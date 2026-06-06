@@ -20,7 +20,7 @@ public class ReviewAddDTO {
 
     @NotNull(message = "推荐程度不能为空")
     @Schema(description = "推荐程度：1-强烈不推荐，2-不推荐，3-中立，4-推荐，5-强烈推荐", example = "4")
-    private RecommendLevelEnum recommendLevel;
+    private Integer recommendLevel;
 
     @NotNull(message = "评分不能为空")
     @Min(value = 1, message = "评分不能小于1")
@@ -30,7 +30,7 @@ public class ReviewAddDTO {
 
     @NotNull(message = "游玩状态不能为空")
     @Schema(description = "游玩状态：1-未开始，2-正在通关，3-单线，4-主线，5-全线，6-弃坑", example = "5")
-    private PlayStatusEnum playStatus;
+    private Integer playStatus;
 
     @Size(max = 520, message = "简评最多520个字符")
     @Schema(description = "简评，最多520字", example = "非常感人的故事")
@@ -38,5 +38,5 @@ public class ReviewAddDTO {
 
     @NotNull(message = "剧透等级不能为空")
     @Schema(description = "剧透等级：1-无剧透，2-轻微剧透，3-严重剧透", example = "1")
-    private SpoilerLevelEnum spoilerLevel;
+    private Integer spoilerLevel;
 }

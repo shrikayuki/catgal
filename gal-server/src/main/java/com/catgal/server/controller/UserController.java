@@ -15,6 +15,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * <p>
@@ -49,18 +50,32 @@ public class UserController {
     }
 
     @GetMapping("/home")
-    @Operation(summary = "查看个人主页")
+    @Operation(summary = "查看用户主页(也可以看别人的 id为空就是自己)")
     public R<UserHomeVO> getUserHomeById(@Valid UserHomeQueryDTO dto) {
         return R.ok(userService.getUserHomeById(dto));
     }
 
-    @PutMapping("/profile/{id}")
+    @PutMapping("/profile/{userId}")
     @Operation(summary = "修改个人信息")
-    public R<Void> updateProfile(@PathVariable Long id,@Valid @RequestBody UserUpdateDTO dto) {
+    public R<Void> updateProfile(@PathVariable("userId") Long id,@Valid @RequestBody UserUpdateDTO dto) {
         userService.updateProfile(id, dto);
         return R.ok();
+    }
+
+    @PostMapping("/avatar")
+    @Operation(description = "修改个人头像")
+    public R<String> updateAvatar(@RequestParam("file") MultipartFile file) {
+        String url = userService.updateAvatar(file);
+        return R.ok(url);
+    }
+
+    @GetMapping("/points")
+    @Operation(description = "获得个人积分")
+    public R<Integer> getMyPoints() {
+        return R.ok(userService.getMyPoints());
     }
 
 
 
 }
+

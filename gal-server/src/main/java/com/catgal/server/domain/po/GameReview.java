@@ -1,5 +1,6 @@
 package com.catgal.server.domain.po;
 
+import com.baomidou.mybatisplus.annotation.EnumValue;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -48,7 +49,8 @@ public class GameReview implements Serializable {
     /**
      * 推荐程度：1-强烈不推荐，2-不推荐，3-中立，4-推荐，5-强烈推荐
      */
-    private RecommendLevelEnum recommendLevel;
+
+    private Integer recommendLevel;
 
     /**
      * 评分：1-10分
@@ -58,7 +60,7 @@ public class GameReview implements Serializable {
     /**
      * 游玩状态：1-未开始，2-正在通关，3-单线，4-主线，5-全线，6-弃坑
      */
-    private PlayStatusEnum playStatus;
+    private Integer playStatus;
 
     /**
      * 简评，最多520字
@@ -68,7 +70,8 @@ public class GameReview implements Serializable {
     /**
      * 剧透等级：1-无剧透，2-轻微剧透，3-严重剧透
      */
-    private SpoilerLevelEnum spoilerLevel;
+
+    private Integer spoilerLevel;
 
     /**
      * 点赞数

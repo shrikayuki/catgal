@@ -1,6 +1,7 @@
 package com.catgal.server.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.catgal.common.context.UserContext;
@@ -14,9 +15,12 @@ import com.catgal.server.mapper.UserMapper;
 import com.catgal.server.service.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.Function;
@@ -30,12 +34,17 @@ import static com.catgal.common.domain.query.UserHomeQueryDTO.*;
 @RequiredArgsConstructor
 public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IUserService {
 
-    private final JwtUtils jwtUtils;
     private final ICommentService commentService;
     private final IGameReviewService reviewService;
     private final IFavoriteFolderService favoriteFolderService;
     private final IResourceService resourceService;
     private final GameMapper gameMapper;
+    private final IUserCutePointsService userCutePointsService;
+    private final IUserCutePointsService userCutePointsUserService;
+
+    private final AliOssUtil aliOssUtil;
+
+
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -80,7 +89,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         }
 
         // 3. 生成 Token
-        String token = jwtUtils.generateToken(user.getId(), user.getUsername());
+        String token = JwtUtils.generateToken(user.getId(), user.getUsername());
 
         // 4. 返回结果
         log.info("用户登录成功: {}", dto.getUsername());
@@ -90,13 +99,19 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     @Override
     public UserHomeVO getUserHomeById(UserHomeQueryDTO dto) {
         boolean isMyself = dto.getUserId() == null;
+        Long myId = UserContext.getUserId();
+        Long userId = null;
+        if (isMyself && myId==null) {
+            log.error("userId:{}",myId);
+            throw new RuntimeException("用户不存在");
+        }
 
-        Long userId = isMyself ? UserContext.getUserId() : dto.getUserId();
+        userId = isMyself ? myId : dto.getUserId();
         User user = getById(userId);
         UserHomeVO vo = BeanUtils.copyProperties(user, UserHomeVO.class);
         vo.setUserId(userId);
 
-        // TODO 关注 萌萌点功能待实现 默认0 false 评论数量 收藏数量 评价数量 发布资源数量
+
         // 评论数量
         Long commentCount = commentService.lambdaQuery()
                 .eq(Comment::getUserId, userId)
@@ -129,6 +144,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
         if (isMyself && Objects.equals(user.getRole(), USER)) {
             vo.setShowApplyCreator(true);
+        }
+        // TODO 关注 功能待实现 默认0 false 评论数量 收藏数量 评价数量 发布资源数量
+        Integer userCutePointsCache = userCutePointsService.getUserCutePointsCache(userId);
+        if (userCutePointsCache != null) {
+            vo.setCutePoints(userCutePointsCache);
         }
 
         Integer tab = dto.getTab();
@@ -177,11 +197,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             updateUser.setSignature(dto.getSignature());
         }
 
-        // 6. 修改头像
-        if (StringUtils.isNotBlank(dto.getAvatarUrl())) {
-            updateUser.setAvatarUrl(dto.getAvatarUrl());
-        }
-
         // 7. 修改密码（需要验证原密码）
         if (StringUtils.isNotBlank(dto.getNewPassword())) {
             // 验证原密码
@@ -203,6 +218,68 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
         log.info("用户信息修改成功: userId={}", id);
     }
+
+    @Override
+    public Integer getMyPoints() {
+        Long userId = UserContext.getUserId();
+        return userCutePointsUserService.getUserCutePointsCache(userId);
+
+    }
+
+    @Override
+    public String updateAvatar(MultipartFile file) {
+        Long userId = UserContext.getUserId();
+        if (userId == null) {
+            throw new RuntimeException("用户未登录");
+        }
+
+        try {
+            // 1. 校验文件
+            if (file.isEmpty()) {
+                throw new RuntimeException("文件不能为空");
+            }
+
+            String originalFilename = file.getOriginalFilename();
+            if (originalFilename == null || originalFilename.isEmpty()) {
+                throw new RuntimeException("文件名不能为空");
+            }
+            log.info(originalFilename);
+            String ext = originalFilename.substring(originalFilename.lastIndexOf("."));
+
+            // 2. 校验文件类型
+            List<String> allowedTypes = Arrays.asList(".jpg", ".jpeg", ".png", ".gif", ".webp");
+            if (!allowedTypes.contains(ext.toLowerCase())) {
+                throw new RuntimeException("只支持 JPG、PNG、GIF、WEBP 格式");
+            }
+
+            // 3. 校验文件大小（2MB）
+            if (file.getSize() > 2 * 1024 * 1024) {
+                throw new RuntimeException("图片大小不能超过 2MB");
+            }
+
+            // 4. 上传到 OSS
+            String objectName = "avatars/" +
+                    userId +
+                    "_" +
+                    System.currentTimeMillis() +
+                    ext;
+            String url = aliOssUtil.upload(file.getBytes(), objectName);
+
+            // 5. 更新数据库
+            LambdaUpdateWrapper<User> wrapper = new LambdaUpdateWrapper<>();
+            wrapper.eq(User::getId, userId)
+                    .set(User::getAvatarUrl, url);
+            update(wrapper);
+
+            log.info("头像上传成功: userId={}, url={}", userId, url);
+            return url;
+
+        } catch (IOException e) {
+            log.error("上传头像失败", e);
+            throw new RuntimeException("上传失败");
+        }
+    }
+
 
     private PageDTO<?> getPageByType(UserHomeQueryDTO dto, Long userId) {
         Integer tab = dto.getTab();
@@ -287,7 +364,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         }
 
         List<UserFavoriteFolderVO> vos = records.stream()
-                .map(f -> BeanUtils.copyProperties(f, UserFavoriteFolderVO.class))
+                .map(f -> {
+                    UserFavoriteFolderVO vo = BeanUtils.copyProperties(f, UserFavoriteFolderVO.class);
+                    Long id = vo.getId();
+                    Integer gameCount = favoriteFolderService.getGameCountFromfolder(id);
+                    if (gameCount != -1) vo.setGameCount(gameCount);
+                    return vo;
+                })
                 .collect(Collectors.toList());
 
         return PageDTO.of(page, vos);

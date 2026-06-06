@@ -96,6 +96,7 @@ public class LikeCountListener {
                                  Function<List<T>, Boolean> updater,
                                  String typeName) {
         if (CollUtils.isEmpty(messages)) {
+            log.info("消息为空");
             return;
         }
 

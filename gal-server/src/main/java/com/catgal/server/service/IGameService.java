@@ -22,4 +22,6 @@ public interface IGameService extends IService<Game> {
     GameVO getGameById(Long id);
 
     GameVO getGameSimpleById(Long id);
+
+    GameVO getRandomGame();
 }

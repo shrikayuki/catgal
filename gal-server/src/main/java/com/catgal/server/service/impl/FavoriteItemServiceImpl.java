@@ -79,8 +79,6 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
 
         Long newCount = favoriteCountChange(StringUtils.format(FAVORITE_COUNT_KEY,gameId),FAVORITE);
 
-        // 添加收藏后
-        redisTemplate.opsForSet().add(FAVORITE_CHANGE_SET_KEY, folderId.toString());
         // 检查收藏夹是否还有数据
         Long size = redisTemplate.opsForHash().size(key);
 
@@ -97,7 +95,7 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
                     .build();
             mqHelper.send(FAVORITE_EXCHANGE, FAVORITE_CHANGE_KEY, message);
         } else {
-            redisTemplate.opsForSet().add(GAME_COUNT_CHANGE_SET_KEY, gameId.toString());
+            redisTemplate.opsForSet().add(GAME_FAVORITE_COUNT_CHANGE_SET_KEY, gameId.toString());
         }
         log.info("收藏成功, userId={}, gameId={}, folderId={}", userId, gameId, folderId);
         return true;
@@ -148,10 +146,66 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
                     .build();
             mqHelper.send(FAVORITE_EXCHANGE, FAVORITE_CHANGE_KEY, message);
         } else {
-            redisTemplate.opsForSet().add(GAME_COUNT_CHANGE_SET_KEY, gameId.toString());
+            redisTemplate.opsForSet().add(GAME_FAVORITE_COUNT_CHANGE_SET_KEY, gameId.toString());
         }
 
         log.info("取消收藏成功, userId={}, gameId={}, folderId={}", userId, gameId, folderId);
+        return true;
+    }
+
+    @Override
+    public Boolean unfavoriteBatch(Long folderId) {
+        if (folderId == null) {
+            throw new RuntimeException("收藏夹ID不能为空");
+        }
+
+        String key = StringUtils.format(USER_FAVORITE_KEY, folderId);
+
+        // 1. 获取所有收藏内容
+        Map<Object, Object> entries = redisTemplate.opsForHash().entries(key);
+        if (CollUtils.isEmpty(entries)) {
+            log.warn("收藏夹为空, folderId={}", folderId);
+            return false;
+        }
+
+        // 2. 删除整个 Hash
+        Boolean deleted = redisTemplate.delete(key);
+        if (!deleted) {
+            log.error("删除Redis收藏记录失败, folderId={}", folderId);
+            return false;
+        }
+
+        log.info("删除收藏记录成功, folderId={}, 删除数量={}", folderId, deleted);
+
+        // 3. 遍历处理每个游戏的收藏数
+        for (Map.Entry<Object, Object> entry : entries.entrySet()) {
+            Long gameId = Long.valueOf(entry.getKey().toString());
+            Long userId = Long.valueOf(entry.getValue().toString());
+
+            // 更新游戏收藏数
+            Long newCount = favoriteCountChange(
+                    StringUtils.format(FAVORITE_COUNT_KEY, gameId),
+                    UNFAVORITE
+            );
+
+            // 同步到数据库（阈值控制）
+            if (newCount <= COUNT_LIMIT_K) {
+                FavoriteSyncMessage message = FavoriteSyncMessage.builder()
+                        .userId(userId)
+                        .folderId(folderId)
+                        .gameId(gameId)
+                        .operation(UNFAVORITE)
+                        .build();
+                mqHelper.send(FAVORITE_EXCHANGE, FAVORITE_CHANGE_KEY, message);
+            } else {
+                redisTemplate.opsForSet().add(GAME_FAVORITE_COUNT_CHANGE_SET_KEY, gameId.toString());
+            }
+        }
+
+        // 4. 记录变化（用于同步到数据库）
+        redisTemplate.opsForSet().add(FAVORITE_CHANGE_SET_KEY, folderId.toString());
+
+        log.info("批量取消收藏成功, folderId={}, 处理游戏数={}", folderId, entries.size());
         return true;
     }
 

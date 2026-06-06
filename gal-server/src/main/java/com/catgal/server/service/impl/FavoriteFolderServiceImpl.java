@@ -9,6 +9,7 @@ import com.catgal.common.domain.query.PageQuery;
 import com.catgal.common.domain.vo.FolderGameVO;
 import com.catgal.common.utils.BeanUtils;
 import com.catgal.common.utils.CollUtils;
+import com.catgal.common.utils.StringUtils;
 import com.catgal.server.domain.po.FavoriteFolder;
 import com.catgal.server.domain.po.FavoriteItem;
 import com.catgal.server.domain.po.Game;
@@ -17,8 +18,10 @@ import com.catgal.server.mapper.FavoriteItemMapper;
 import com.catgal.server.mapper.GameMapper;
 import com.catgal.server.service.IFavoriteFolderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.catgal.server.service.IFavoriteItemService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +30,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static com.catgal.common.constants.RedisConstant.USER_FAVORITE_KEY;
 
 /**
  * <p>
@@ -44,6 +49,9 @@ public class FavoriteFolderServiceImpl extends ServiceImpl<FavoriteFolderMapper,
     private final FavoriteFolderMapper folderMapper;
     private final FavoriteItemMapper favoriteItemMapper;
     private final GameMapper gameMapper;
+    private final IFavoriteItemService favoriteService;
+    private final StringRedisTemplate redisTemplate;
+
 
     @Override
     @Transactional
@@ -85,15 +93,31 @@ public class FavoriteFolderServiceImpl extends ServiceImpl<FavoriteFolderMapper,
         }
 
         // 3. 删除收藏夹下的所有收藏项
-        favoriteItemMapper.delete(
+        /*favoriteItemMapper.delete(
                 new LambdaQueryWrapper<FavoriteItem>()
                         .eq(FavoriteItem::getFolderId, id)
-        );
+        );*/
+        //操作redis
+        //获得该收藏夹下的所有游戏 收藏夹Id(1)-> gameId(N)-userId (1)
+        Boolean success = favoriteService.unfavoriteBatch(id);
+        if (!success) {
+            throw new RuntimeException("操作失败");
+        }
+
+        //批量取消收藏
+
 
         // 4. 删除收藏夹
         folderMapper.deleteById(id);
 
         log.info("删除收藏夹成功, id={}, userId={}", id, userId);
+    }
+
+    @Override
+    public Integer getGameCountFromfolder(Long folderId) {
+        Long size = redisTemplate.opsForHash().size(StringUtils.format(USER_FAVORITE_KEY, folderId));
+        if (size == null || size <= 0) return -1;
+        return size.intValue();
     }
 
     @Override

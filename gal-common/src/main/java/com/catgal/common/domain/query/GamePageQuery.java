@@ -30,27 +30,27 @@ public class GamePageQuery extends PageQuery {
     );
 
     // ========== 模糊匹配 ==========
-    @Schema(description = "游戏名称（模糊匹配）", example = "Summer")
+    @Schema(description = "游戏名称（模糊匹配）")
     private String name;
 
     // ========== 时间筛选 ==========
-    @Schema(description = "发售年份", example = "2024")
+    @Schema(description = "发售年份")
     private Integer releaseYear;
 
     // ========== 标签筛选（单选） ==========
-    @Schema(description = "游戏标签ID", example = "1")
+    @Schema(description = "游戏标签ID")
     private Integer tagId;
     // ========== 会社筛选（单选） ==========
-    @Schema(description = "会社ID", example = "1")
+    @Schema(description = "会社ID")
     private Long companyId;
     // ========== 资源相关筛选（单选） ==========
-    @Schema(description = "资源类型", example = "pc", allowableValues = {"pc", "生肉", "汉化", "手机", "补丁", "模拟器", "其他"})
+    @Schema(description = "资源类型", allowableValues = {"pc", "生肉", "汉化", "手机", "补丁", "模拟器", "其他"})
     private String resourceType;
 
-    @Schema(description = "语言", example = "中文", allowableValues = {"中文", "日语", "英语", "其他"})
+    @Schema(description = "语言", allowableValues = {"中文", "日语", "英语", "其他"})
     private String language;
 
-    @Schema(description = "平台", example = "win", allowableValues = {"win", "mac", "linux", "android", "ios", "其他"})
+    @Schema(description = "平台", allowableValues = {"win", "mac", "linux", "android", "ios", "其他"})
     private String platform;
 
     // ========== 排序 ==========

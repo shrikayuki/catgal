@@ -12,6 +12,7 @@ import com.catgal.common.domain.vo.GameConnectVO;
 import com.catgal.common.domain.vo.GameVO;
 import com.catgal.common.utils.BeanUtils;
 import com.catgal.common.utils.CollUtils;
+import com.catgal.common.utils.StringUtils;
 import com.catgal.server.domain.po.Comment;
 import com.catgal.server.domain.po.User;
 import com.catgal.server.mapper.CommentMapper;
@@ -22,14 +23,17 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.catgal.server.service.IGameService;
 import com.catgal.server.service.ILikeRecordService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.catgal.common.constants.LikeBizTypeConstant.LIKE_TYPE_COMMENT;
 import static com.catgal.common.constants.RedisConstant.COMMENT_COUNT_KEY;
+import static com.catgal.common.constants.RedisConstant.GAME_COMMENT_COUNT_CHANGE_SET_KEY;
 
 /**
  * <p>
@@ -41,6 +45,7 @@ import static com.catgal.common.constants.RedisConstant.COMMENT_COUNT_KEY;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> implements ICommentService {
 
     private final UserMapper userMapper;
@@ -79,39 +84,53 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
 
     @Override
     public void addComment(CommentAddDTO dto) {
-        if (dto.getGameId() == null) {
+        Long gameId = dto.getGameId();
+        if (gameId == null) {
             throw new RuntimeException("游戏Id不能为空");
         }
         Long userId = UserContext.getUserId();
+        if (userId == null) {
+            throw new RuntimeException("userId为空");
+        }
         Comment comment = new Comment();
         BeanUtils.copyProperties(dto, comment);
         comment.setUserId(userId);
         boolean success = save(comment);
         if (!success) {
-            throw new RuntimeException("保存失败");
+            log.error("失败");
         }
-        redisTemplate.opsForValue().increment(COMMENT_COUNT_KEY);
+        redisTemplate.opsForValue().increment(StringUtils.format(COMMENT_COUNT_KEY,gameId));
+        redisTemplate.opsForSet().add(GAME_COMMENT_COUNT_CHANGE_SET_KEY, gameId.toString());
     }
 
     @Override
     public void replyComment(ReplyCommentDTO dto) {
-        if (dto.getGameId() == null) {
+        Long gameId = dto.getGameId();
+        if (gameId == null) {
             throw new RuntimeException("游戏Id不能为空");
         }
+        Long userId = UserContext.getUserId();
+        if (userId == null) {
+            throw new RuntimeException("userId为空");
+        }
         Comment comment = new Comment();
+        log.debug("{}", comment.getContent());
         BeanUtils.copyProperties(dto, comment);
-        comment.setUserId(UserContext.getUserId());
+        // 打印 comment 中的值
+        log.info("Comment - parentId: {}, replyCommentId: {}, content: {}",
+                dto.getParentId(), dto.getReplyCommentId(), dto.getContent());
+        comment.setUserId(userId);
         boolean success = save(comment);
         if (!success) {
             throw new RuntimeException("保存失败");
         }
-        redisTemplate.opsForValue().increment(COMMENT_COUNT_KEY);
+        redisTemplate.opsForValue().increment(StringUtils.format(COMMENT_COUNT_KEY,gameId));
+        redisTemplate.opsForSet().add(GAME_COMMENT_COUNT_CHANGE_SET_KEY, gameId.toString());
     }
 
     @Override
-    public PageDTO<CommentVO> getChildComments(Long parentId, PageQuery query) {
-        // 查询子评论（parent_id = parentId）
-        Page<Comment> page = lambdaQuery().eq(Comment::getParentId, parentId)
+    public PageDTO<CommentVO> getChildComments(Long replyCommentId, PageQuery query) {
+        Page<Comment> page = lambdaQuery().eq(Comment::getReplyCommentId, replyCommentId)
                 .eq(Comment::getStatus, 1)
                 .page(query.toMpPageDefaultSortByCreateTimeDesc());
         List<Comment> records = page.getRecords();
@@ -119,14 +138,15 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             return PageDTO.empty(page);
         }
         // 转换 VO
-        List<CommentVO> vos = getVOS(records);;
-
+        List<CommentVO> vos = getVOS(records);
 
         return PageDTO.of(page, vos);
     }
 
     @Override
+    @Transactional
     public void deleteComment(Long id) {
+        log.info("\u001B[31mdelete comment: {}\u001B[0m", id);
         Long userId = UserContext.getUserId();
         if (id == null || userId == null) {
             log.error("评论或用户不存在");
@@ -139,12 +159,32 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
         if (!comment.getUserId().equals(userId)) {
             throw new RuntimeException("不能删除他人的评论");
         }
+        int needDelCount = 1;
+        List<Comment> list = null;
+        if (comment.getParentId() == null) {
+            //根评论 需要同时删除子评论
+            list = lambdaQuery().eq(Comment::getParentId, id).eq(Comment::getStatus, 1).list();
+            if (CollUtils.isNotEmpty(list)) {
+                if (removeBatchByIds(list)) {
+                    needDelCount += list.size();
+                }
+            }
+
+        }
         boolean del = removeById(comment);
         if (!del) {
             log.error("删除失败");
         }
-        redisTemplate.opsForValue().increment(COMMENT_COUNT_KEY, -1);
+        Long gameId = comment.getGameId();
+        redisTemplate.opsForValue().increment(COMMENT_COUNT_KEY, -needDelCount);
+        redisTemplate.opsForSet().add(GAME_COMMENT_COUNT_CHANGE_SET_KEY, gameId.toString());
         likeService.clearLikeCache(LIKE_TYPE_COMMENT, id);
+        if (CollUtils.isNotEmpty(list)) {
+            for (Comment comm : list) {
+                likeService.clearLikeCache(LIKE_TYPE_COMMENT, comm.getId());
+            }
+        }
+
     }
 
     private List<CommentVO> getVOS(List<Comment> records) {
@@ -164,8 +204,7 @@ public class CommentServiceImpl extends ServiceImpl<CommentMapper, Comment> impl
             likeCounts = likeService.getLikeCounts(commentIds, LIKE_TYPE_COMMENT);
         }
         for (Comment c : records) {
-            CommentVO commentVO = BeanUtils.copyBean(c, CommentVO.class);
-
+            CommentVO commentVO = BeanUtils.copyProperties(c, CommentVO.class);
             // 设置用户信息
             User user = userMap == null ? null : userMap.get(c.getUserId());
             if (user != null) {

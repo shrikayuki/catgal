@@ -16,9 +16,6 @@ public class UserUpdateDTO {
     @Schema(description = "个人签名", example = "新的签名")
     private String signature;
 
-    @Schema(description = "头像URL", example = "https://example.com/avatar.jpg")
-    private String avatarUrl;
-
     @Schema(description = "原密码", example = "old123456")
     private String oldPassword;
 

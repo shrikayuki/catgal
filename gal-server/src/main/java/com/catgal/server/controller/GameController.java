@@ -44,5 +44,12 @@ public class GameController {
         return R.ok(vo);
     }
 
+    @GetMapping("/random")
+    @Operation(summary = "随机一部游戏")
+    public R<GameVO> getRandomGame() {
+        GameVO vo = gameService.getRandomGame();
+        return R.ok(vo);
+    }
+
 
 }

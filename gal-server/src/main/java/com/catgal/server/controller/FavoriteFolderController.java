@@ -6,7 +6,6 @@ import com.catgal.common.domain.dto.CreateFolderDTO;
 import com.catgal.common.domain.dto.PageDTO;
 import com.catgal.common.domain.query.PageQuery;
 import com.catgal.common.domain.vo.FolderGameVO;
-import com.catgal.server.domain.po.FavoriteFolder;
 import com.catgal.server.service.IFavoriteFolderService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -46,7 +45,7 @@ public class FavoriteFolderController {
         return R.ok();
     }
 
-    @GetMapping("{id}")
+    @GetMapping("/{id}")
     @Operation(summary = "根据id查看收藏夹下的游戏")
     public R<PageDTO<FolderGameVO>> getGamesByFolderId(@PathVariable Long id, PageQuery query) {
         PageDTO<FolderGameVO> vos = folderService.getGamesById(id, query);

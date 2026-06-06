@@ -15,7 +15,7 @@ public class ReplyCommentDTO {
     private Long parentId;
 
     @Schema(description = "回复内容", required = true, example = "你说得对！")
-    private String comment;
+    private String content;
 
     @Schema(description = "被回复的用户ID", example = "2001")
     private Long replyUserId;
