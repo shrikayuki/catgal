@@ -142,7 +142,10 @@ public class GameServiceImpl extends ServiceImpl<GameMapper, Game> implements IG
             vo.setDownloadCount(gameDownLoadCount);
         }
         vo.setResourceCount(null);
-        vo.setFavoriteCount(statsService.getGameFavoriteCount(id));
+        Integer gameFavoriteCount = statsService.getGameFavoriteCount(id);
+        if (gameFavoriteCount != -1) {
+            vo.setFavoriteCount(gameFavoriteCount);
+        }
         vo.setViewCount(statsService.getGameLookCount(id));
         vo.setRating(statsService.getRating(id));
 

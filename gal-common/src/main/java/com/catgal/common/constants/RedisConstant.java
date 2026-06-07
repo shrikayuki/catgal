@@ -69,6 +69,8 @@ public class RedisConstant {
     public static final String USER_FANS_KEY = "user:fans:{}";
     //用户的关注
     public static final String USER_FOLLOWS_KEY = "user:follows:{}";
+    //关注set变化key 用于做增量同步
+    public static final String FOLLOW_CHANGE_SET_KEY = "follow:change";
 
 }
 

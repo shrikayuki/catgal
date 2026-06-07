@@ -44,6 +44,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     private final AliOssUtil aliOssUtil;
 
+    private final IFollowRecordService followService;
+
 
 
     @Override
@@ -135,17 +137,18 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                 .eq(Resource::getUserId, userId)
                 .count();
         vo.setResourceCount(resourceCount.intValue());
-        vo.setCutePoints(0);
-        vo.setFollowerCount(0);
-        vo.setFollowingCount(0);
+
+        vo.setCutePoints(userCutePointsUserService.getUserCutePointsCache(userId));
+        vo.setFollowerCount(followService.userFansCount(userId));
+        vo.setFollowingCount(followService.userFollowCount(userId));
         if (!isMyself) {
-            vo.setIsFollowing(false);
+            vo.setIsFollowing(followService.isMyFollow(myId, userId));
         }
 
         if (isMyself && Objects.equals(user.getRole(), USER)) {
             vo.setShowApplyCreator(true);
         }
-        // TODO 关注 功能待实现 默认0 false 评论数量 收藏数量 评价数量 发布资源数量
+
         Integer userCutePointsCache = userCutePointsService.getUserCutePointsCache(userId);
         if (userCutePointsCache != null) {
             vo.setCutePoints(userCutePointsCache);

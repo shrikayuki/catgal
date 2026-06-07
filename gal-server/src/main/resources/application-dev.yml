@@ -44,3 +44,5 @@ spring:
           dimensions: 1024  # 可选，V3/V4 支持自定义维度
 
 
+
+
