@@ -15,6 +15,8 @@ import java.io.Serializable;
 @AllArgsConstructor
 @Schema(description = "用户萌萌点变更消息")
 public class UserCutePointsMessage implements Serializable {
+    @Schema(description = "全局唯一业务幂等号", requiredMode = Schema.RequiredMode.REQUIRED)
+    private String bizId;
     @Schema(description = "用户id")
     private Long userId;
     @Schema(description = "业务类型")

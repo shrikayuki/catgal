@@ -9,6 +9,7 @@ import com.catgal.common.domain.dto.UserUpdateDTO;
 import com.catgal.common.domain.vo.LoginVO;
 import com.catgal.common.domain.vo.UserHomeVO;
 import com.catgal.server.service.IUserService;
+import com.catgal.server.mvc.annotation.LoginRequired;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -37,14 +38,14 @@ public class UserController {
 
     @PostMapping("/register")
     @Operation(summary = "用户注册")
-    public R<String> register(@RequestBody RegisterDTO dto) {
+    public R<String> register(@Valid @RequestBody RegisterDTO dto) {
         userService.register(dto);
         return R.ok("注册成功");
     }
 
     @PostMapping("/login")
     @Operation(summary = "用户登录")
-    public R<LoginVO> login(@RequestBody LoginDTO dto) {
+    public R<LoginVO> login(@Valid @RequestBody LoginDTO dto) {
         LoginVO vo = userService.login(dto);
         return R.ok(vo);
     }
@@ -56,6 +57,7 @@ public class UserController {
     }
 
     @PutMapping("/profile/{userId}")
+    @LoginRequired
     @Operation(summary = "修改个人信息")
     public R<Void> updateProfile(@PathVariable("userId") Long id,@Valid @RequestBody UserUpdateDTO dto) {
         userService.updateProfile(id, dto);
@@ -63,6 +65,7 @@ public class UserController {
     }
 
     @PostMapping("/avatar")
+    @LoginRequired
     @Operation(description = "修改个人头像")
     public R<String> updateAvatar(@RequestParam("file") MultipartFile file) {
         String url = userService.updateAvatar(file);
@@ -70,6 +73,7 @@ public class UserController {
     }
 
     @GetMapping("/points")
+    @LoginRequired
     @Operation(description = "获得个人积分")
     public R<Integer> getMyPoints() {
         return R.ok(userService.getMyPoints());

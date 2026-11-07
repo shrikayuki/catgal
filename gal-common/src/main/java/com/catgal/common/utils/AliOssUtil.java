@@ -6,6 +6,7 @@ import com.aliyun.oss.OSSClientBuilder;
 import com.aliyun.oss.OSSException;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -17,7 +18,9 @@ import java.io.ByteArrayInputStream;
 public class AliOssUtil {
 
     private String endpoint;
+    @ToString.Exclude
     private String accessKeyId;
+    @ToString.Exclude
     private String accessKeySecret;
     private String bucketName;
 

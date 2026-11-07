@@ -6,10 +6,12 @@ import com.catgal.common.domain.dto.PageDTO;
 import com.catgal.common.domain.dto.ReviewAddDTO;
 import com.catgal.common.domain.query.GameQuery;
 import com.catgal.common.domain.vo.*;
+import com.catgal.common.exception.BusinessException;
 import com.catgal.common.utils.BeanUtils;
 import com.catgal.common.utils.CollUtils;
 import com.catgal.common.utils.StringUtils;
 import com.catgal.server.domain.po.Comment;
+import com.catgal.server.domain.po.Game;
 import com.catgal.server.domain.po.GameReview;
 import com.catgal.server.domain.po.User;
 import com.catgal.server.mapper.GameReviewMapper;
@@ -18,6 +20,8 @@ import com.catgal.server.service.IGameReviewService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.catgal.server.service.IGameService;
 import com.catgal.server.service.ILikeRecordService;
+import com.catgal.server.service.IGameStatsService;
+import com.catgal.server.service.RedisCounterService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -46,12 +50,14 @@ public class GameReviewServiceImpl extends ServiceImpl<GameReviewMapper, GameRev
     private final IGameService gameService;
     private final ILikeRecordService likeService;
     private final StringRedisTemplate redisTemplate;
+    private final IGameStatsService statsService;
+    private final RedisCounterService redisCounterService;
 
     @Override
     public GameConnectVO<GameReviewVO> pageGameReview(GameQuery query) {
         Long gameId = query.getGameId();
         if (query.getGameId() == null) {
-            throw new RuntimeException("游戏Id不能为空");
+            throw BusinessException.badRequest("游戏Id不能为空");
         }
         GameVO gameInfo = gameService.getGameSimpleById(gameId);
         // 先转换基本对象
@@ -76,10 +82,17 @@ public class GameReviewServiceImpl extends ServiceImpl<GameReviewMapper, GameRev
         Long userId = UserContext.getUserId();
         Long gameId = dto.getGameId();
         Integer score = dto.getScore();
-        if (userId == null || gameId == null) {
-            log.error("游戏id或用户id为空");
-            throw new RuntimeException("用户未登录或是游戏不存在");
+        if (userId == null) {
+            throw BusinessException.unauthorized("用户未登录");
         }
+        if (gameId == null) {
+            throw BusinessException.badRequest("游戏Id不能为空");
+        }
+        Game game = gameService.getById(gameId);
+        if (game == null || !Objects.equals(game.getStatus(), 1)) {
+            throw BusinessException.conflict("只能评价已发布游戏");
+        }
+        int initialCount = statsService.getGameReviewCount(gameId);
         GameReview gameReview = BeanUtils.copyProperties(dto, GameReview.class);
 
         gameReview.setUserId(userId);
@@ -87,8 +100,8 @@ public class GameReviewServiceImpl extends ServiceImpl<GameReviewMapper, GameRev
         if (!success) {
             log.error("保存失败");
         }
-        redisTemplate.opsForValue().increment(StringUtils.format(REVIEW_COUNT_KEY, gameId));
-        redisTemplate.opsForSet().add(GAME_REVIEW_COUNT_CHANGE_SET_KEY, gameId.toString());
+        redisCounterService.changeAndMark(StringUtils.format(REVIEW_COUNT_KEY, gameId),
+                initialCount, 1L, GAME_STATS_COUNT_CHANGE_SET_KEY, gameId);
         redisTemplate.opsForZSet().add(StringUtils.format(GAME_RATING_KEY, gameId), String.valueOf(gameReview.getId()), score);
 
     }
@@ -99,18 +112,19 @@ public class GameReviewServiceImpl extends ServiceImpl<GameReviewMapper, GameRev
         GameReview review = getById(id);
         if (review == null) {
             log.error("评价不存在");
-            throw new RuntimeException("该评价不存在或是被删除");
+            throw BusinessException.notFound("该评价不存在或是被删除");
         }
         if (!review.getUserId().equals(userId)) {
-            throw new RuntimeException("只能删除自己的评价");
+            throw BusinessException.forbidden("只能删除自己的评价");
         }
         Long gameId = review.getGameId();
+        int initialCount = statsService.getGameReviewCount(gameId);
         boolean success = removeById(review);
         if (!success) {
             log.error("删除失败");
         }
-        redisTemplate.opsForValue().increment(StringUtils.format(REVIEW_COUNT_KEY, gameId), -1);
-        redisTemplate.opsForSet().add(GAME_REVIEW_COUNT_CHANGE_SET_KEY, gameId.toString());
+        redisCounterService.changeAndMark(StringUtils.format(REVIEW_COUNT_KEY, gameId),
+                initialCount, -1L, GAME_STATS_COUNT_CHANGE_SET_KEY, gameId);
         redisTemplate.opsForZSet().remove(StringUtils.format(GAME_RATING_KEY, gameId), String.valueOf(id));
         likeService.clearLikeCache(LIKE_TYPE_REVIEW, id);
     }

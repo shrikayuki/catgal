@@ -2,6 +2,9 @@ package com.catgal.server.mapper;
 
 import com.catgal.server.domain.po.User;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import org.apache.ibatis.annotations.Select;
+
+import java.util.List;
 
 /**
  * <p>
@@ -13,4 +16,6 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
  */
 public interface UserMapper extends BaseMapper<User> {
 
+    @Select("SELECT id FROM `user` WHERE role = 2 FOR UPDATE")
+    List<Long> selectAdminIdsForUpdate();
 }

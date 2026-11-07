@@ -4,6 +4,7 @@ import Message.FavoriteSyncMessage;
 import com.catgal.common.autoconfigure.mq.RabbitMqHelper;
 import com.catgal.common.context.UserContext;
 import com.catgal.common.domain.dto.FavoriteDTO;
+import com.catgal.common.exception.BusinessException;
 import com.catgal.common.utils.CollUtils;
 import com.catgal.common.utils.StringUtils;
 import com.catgal.server.domain.po.FavoriteFolder;
@@ -11,6 +12,9 @@ import com.catgal.server.domain.po.FavoriteItem;
 import com.catgal.server.mapper.FavoriteFolderMapper;
 import com.catgal.server.mapper.FavoriteItemMapper;
 import com.catgal.server.service.IFavoriteItemService;
+import com.catgal.server.service.IGameStatsService;
+import com.catgal.server.service.RedisCounterService;
+import com.catgal.server.service.RedisDirtySetProcessor;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +49,9 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
     private final FavoriteFolderMapper folderMapper;
     private final RabbitMqHelper mqHelper;
     private final FavoriteItemMapper favoriteItemMapper;
+    private final IGameStatsService statsService;
+    private final RedisCounterService redisCounterService;
+    private final RedisDirtySetProcessor dirtySetProcessor;
 
     @Override
     public Boolean favorite(FavoriteDTO dto) {
@@ -54,16 +61,16 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
 
         // 1. 参数校验
         if (gameId == null || folderId == null) {
-            throw new RuntimeException("游戏ID和收藏夹ID不能为空");
+            throw BusinessException.badRequest("游戏ID和收藏夹ID不能为空");
         }
 
         // 2. 校验收藏夹是否存在且属于当前用户
         FavoriteFolder folder = folderMapper.selectById(folderId);
         if (folder == null) {
-            throw new RuntimeException("收藏夹不存在");
+            throw BusinessException.notFound("收藏夹不存在");
         }
         if (!folder.getUserId().equals(userId)) {
-            throw new RuntimeException("无权操作");
+            throw BusinessException.forbidden("无权操作");
         }
 
         // 3. 检查是否已收藏
@@ -77,7 +84,7 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
         // 4. 添加到 Redis
         redisTemplate.opsForHash().put(key, String.valueOf(gameId), String.valueOf(userId));
 
-        Long newCount = favoriteCountChange(StringUtils.format(FAVORITE_COUNT_KEY,gameId),FAVORITE);
+        Long newCount = favoriteCountChange(gameId, FAVORITE);
 
         // 检查收藏夹是否还有数据
         Long size = redisTemplate.opsForHash().size(key);
@@ -94,8 +101,6 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
                     .operation(FAVORITE)  // 1-收藏
                     .build();
             mqHelper.send(FAVORITE_EXCHANGE, FAVORITE_CHANGE_KEY, message);
-        } else {
-            redisTemplate.opsForSet().add(GAME_FAVORITE_COUNT_CHANGE_SET_KEY, gameId.toString());
         }
         log.info("收藏成功, userId={}, gameId={}, folderId={}", userId, gameId, folderId);
         return true;
@@ -109,16 +114,16 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
 
         // 1. 参数校验
         if (gameId == null || folderId == null) {
-            throw new RuntimeException("游戏ID和收藏夹ID不能为空");
+            throw BusinessException.badRequest("游戏ID和收藏夹ID不能为空");
         }
 
         // 2. 校验收藏夹是否存在且属于当前用户
         FavoriteFolder folder = folderMapper.selectById(folderId);
         if (folder == null) {
-            throw new RuntimeException("收藏夹不存在");
+            throw BusinessException.notFound("收藏夹不存在");
         }
         if (!folder.getUserId().equals(userId)) {
-            throw new RuntimeException("无权操作");
+            throw BusinessException.forbidden("无权操作");
         }
 
         // 3. 检查是否已收藏
@@ -132,7 +137,7 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
         // 4. 从 Redis 移除
         Long deleted = redisTemplate.opsForHash().delete(key, String.valueOf(gameId));
 
-        Long newCount = favoriteCountChange(StringUtils.format(FAVORITE_COUNT_KEY,gameId),UNFAVORITE);
+        Long newCount = favoriteCountChange(gameId, UNFAVORITE);
 
         // 记录变化
         redisTemplate.opsForSet().add(FAVORITE_CHANGE_SET_KEY, folderId.toString());
@@ -145,8 +150,6 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
                     .operation(UNFAVORITE)  // 0-取消收藏
                     .build();
             mqHelper.send(FAVORITE_EXCHANGE, FAVORITE_CHANGE_KEY, message);
-        } else {
-            redisTemplate.opsForSet().add(GAME_FAVORITE_COUNT_CHANGE_SET_KEY, gameId.toString());
         }
 
         log.info("取消收藏成功, userId={}, gameId={}, folderId={}", userId, gameId, folderId);
@@ -156,7 +159,7 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
     @Override
     public Boolean unfavoriteBatch(Long folderId) {
         if (folderId == null) {
-            throw new RuntimeException("收藏夹ID不能为空");
+            throw BusinessException.badRequest("收藏夹ID不能为空");
         }
 
         String key = StringUtils.format(USER_FAVORITE_KEY, folderId);
@@ -183,10 +186,7 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
             Long userId = Long.valueOf(entry.getValue().toString());
 
             // 更新游戏收藏数
-            Long newCount = favoriteCountChange(
-                    StringUtils.format(FAVORITE_COUNT_KEY, gameId),
-                    UNFAVORITE
-            );
+            Long newCount = favoriteCountChange(gameId, UNFAVORITE);
 
             // 同步到数据库（阈值控制）
             if (newCount <= COUNT_LIMIT_K) {
@@ -197,8 +197,6 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
                         .operation(UNFAVORITE)
                         .build();
                 mqHelper.send(FAVORITE_EXCHANGE, FAVORITE_CHANGE_KEY, message);
-            } else {
-                redisTemplate.opsForSet().add(GAME_FAVORITE_COUNT_CHANGE_SET_KEY, gameId.toString());
             }
         }
 
@@ -210,23 +208,10 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
     }
 
     @Override
-    @Transactional
     public void fullSyncFavoriteItemsToDBTask(Integer batchSize) {
         String changeKey = FAVORITE_CHANGE_SET_KEY;
-        Long size = redisTemplate.opsForSet().size(changeKey);
-        if (size == null || size <= 0) {
-            log.debug("没有要同步的收藏记录");
-            return;
-        }
-
-        while (true) {
-            // 批量取出变化的收藏夹ID
-            List<String> pop = redisTemplate.opsForSet().pop(changeKey, batchSize);
-            if (CollUtils.isEmpty(pop)) {
-                break;
-            }
-
-            Set<Long> folderIds = pop.stream()
+        int processed = dirtySetProcessor.processBatch(changeKey, batchSize, true, claimed -> {
+            Set<Long> folderIds = claimed.stream()
                     .map(Long::parseLong)
                     .collect(Collectors.toSet());
 
@@ -256,31 +241,22 @@ public class FavoriteItemServiceImpl extends ServiceImpl<FavoriteItemMapper, Fav
                 saveBatch(favoriteItems);
                 log.info("同步收藏记录成功, 数量={}", favoriteItems.size());
             }
-        }
-
-        log.info("全量同步收藏记录完成");
+        });
+        log.info("收藏记录同步完成, 处理收藏夹数={}", processed);
     }
 
-    private Long favoriteCountChange(String countKey, Integer operation) {
-        Long newCount = 0L;
-        if (Objects.equals(operation, FAVORITE)) {
-            // 收藏：+1
-            newCount = redisTemplate.opsForValue().increment(countKey);
-            log.debug("游戏收藏数+1, key={}, newCount={}", countKey, newCount);
-        } else {
-            // 取消收藏：-1
-            newCount = redisTemplate.opsForValue().decrement(countKey);
-
-            // 防止负数
-            if (newCount != null && newCount < 0) {
-                redisTemplate.opsForValue().set(countKey, "0");
-                newCount = 0L;
-                log.warn("游戏收藏数变为负数，已重置为0, key={}", countKey);
-            }
-
-            log.debug("游戏收藏数-1, key={}, newCount={}", countKey, newCount);
-        }
-
+    private Long favoriteCountChange(Long gameId, Integer operation) {
+        String countKey = StringUtils.format(FAVORITE_COUNT_KEY, gameId);
+        long initialCount = statsService.getGameFavoriteCount(gameId);
+        long delta = Objects.equals(operation, FAVORITE) ? 1L : -1L;
+        long newCount = redisCounterService.changeAndMark(
+                countKey,
+                initialCount,
+                delta,
+                GAME_STATS_COUNT_CHANGE_SET_KEY,
+                gameId
+        );
+        log.debug("游戏收藏数变化, key={}, delta={}, newCount={}", countKey, delta, newCount);
         return newCount;
 
 

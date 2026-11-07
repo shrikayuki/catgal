@@ -3,6 +3,7 @@ package com.catgal.server.controller;
 import com.catgal.common.domain.R;
 import com.catgal.common.domain.vo.SignVO;
 import com.catgal.server.service.ISignService;
+import com.catgal.server.mvc.annotation.LoginRequired;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +16,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/sign")
 @RequiredArgsConstructor
+@LoginRequired
 public class SignController {
     private final ISignService signService;
 

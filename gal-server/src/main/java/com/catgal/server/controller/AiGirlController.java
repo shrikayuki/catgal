@@ -3,18 +3,15 @@ package com.catgal.server.controller;
 
 import com.catgal.common.domain.R;
 import com.catgal.common.domain.vo.AIGirlVO;
-import com.catgal.server.domain.po.AiGirl;
+import com.catgal.server.mvc.annotation.LoginRequired;
 import com.catgal.server.service.IAiGirlService;
 import io.swagger.v3.oas.annotations.Operation;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import reactor.core.publisher.Flux;
 
 import java.util.List;
-import java.util.Set;
 
 /**
  * <p>
@@ -39,6 +36,7 @@ public class AiGirlController {
     }
 
     @PostMapping("/new/{girlCode}")
+    @LoginRequired
     @Operation(description = "开启会话")
     public R<String> newSession(@PathVariable("girlCode") String girlCode){
         String sessionId = aiGirlService.newSession(girlCode);
@@ -46,6 +44,7 @@ public class AiGirlController {
     }
 
     @GetMapping("/history/{girlCode}")
+    @LoginRequired
     @Operation(description = "根据不同美少女用户获得对应的会话id集合")
     public R<List<String>> getHistorySessionIds(@PathVariable("girlCode") String girlCode){
         List<String> sessionList = aiGirlService.getHistorySessionIds(girlCode);
@@ -53,6 +52,7 @@ public class AiGirlController {
     }
 
     @PostMapping(value = "/chat/{girlCode}", produces = "text/html;charset=utf-8")
+    @LoginRequired
     @Operation(description = "和你的ai美少女聊天")
     public Flux<String> chatWithAIGirl(@PathVariable("girlCode") String girlCode, String sessionId, String userMessage){
         return aiGirlService.chatWithAIGirl(girlCode, sessionId, userMessage);

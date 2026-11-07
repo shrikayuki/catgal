@@ -7,6 +7,7 @@ import com.catgal.common.domain.query.PageQuery;
 import com.catgal.common.domain.vo.DrawRecordVO;
 import com.catgal.server.domain.po.DrawRecord;
 import com.catgal.server.service.IDrawRecordService;
+import com.catgal.server.mvc.annotation.LoginRequired;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,6 +28,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/draw-record")
 @RequiredArgsConstructor
+@LoginRequired
 public class DrawRecordController {
 
     private final IDrawRecordService drawRecordService;

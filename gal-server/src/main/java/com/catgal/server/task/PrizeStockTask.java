@@ -15,7 +15,7 @@ public class PrizeStockTask {
     private static final Integer BATCH_SIZE = 100;
     private final IPrizePoolService prizePoolService;
 
-    @Scheduled(fixedRate = 1000000000)
+    @Scheduled(fixedDelay = 60000)
     public void prizeStockToDB(){
         log.info("--------奖池库存同步中----------");
         prizePoolService.prizeStockToDB(RedisConstant.PRIZE_POOL_CHANGE_SET_KEY, BATCH_SIZE);

@@ -10,11 +10,14 @@ public interface IGameStatsService {
     Integer getGameResourceCount(Long gameId);
     Integer getResourceDownLoadCount(Long resourceId);
 
-    void checkFavoriteTimes(String key, Integer batchSize);
 
     Integer getGameDownLoadCount(Long id);
 
     Integer getGameCommentCount(Long id);
 
     BigDecimal getRating(Long id);
+
+    void checkGameStats(String key, Integer batchSize);
+
+    void checkResourceDownLoad(String resourceCountKey, Integer batchSize);
 }

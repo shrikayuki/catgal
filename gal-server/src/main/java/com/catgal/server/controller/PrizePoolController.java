@@ -5,6 +5,7 @@ import com.catgal.common.domain.R;
 import com.catgal.common.domain.vo.PrizeVO;
 import com.catgal.common.domain.vo.UserPrizeVO;
 import com.catgal.server.service.IPrizePoolService;
+import com.catgal.server.mvc.annotation.LoginRequired;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -35,6 +36,7 @@ public class PrizePoolController {
     }
 
     @PostMapping("/draw")
+    @LoginRequired
     @Operation(description = "抽奖接口")
     public R<UserPrizeVO> drawPrizePool() {
         UserPrizeVO vo = prizeService.drawPrizePool();

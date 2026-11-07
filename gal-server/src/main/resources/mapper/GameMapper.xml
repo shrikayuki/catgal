@@ -2,16 +2,43 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.catgal.server.mapper.GameMapper">
 
-    <update id="batchUpdateFavoriteCount">
+    <!-- 批量更新游戏统计数据 -->
+    <update id="batchUpdateGameStats" parameterType="list">
         UPDATE game
-        SET favorite_count = CASE id
-        <foreach collection="list" item="item" separator=" ">
-            WHEN #{item.id} THEN #{item.favoriteCount}
+        SET
+        favorite_count = CASE id
+        <foreach collection="list" item="game" separator=" ">
+            WHEN #{game.id} THEN #{game.favoriteCount}
+        </foreach>
+        END,
+        view_count = CASE id
+        <foreach collection="list" item="game" separator=" ">
+            WHEN #{game.id} THEN #{game.viewCount}
+        </foreach>
+        END,
+        comment_count = CASE id
+        <foreach collection="list" item="game" separator=" ">
+            WHEN #{game.id} THEN #{game.commentCount}
+        </foreach>
+        END,
+        review_count = CASE id
+        <foreach collection="list" item="game" separator=" ">
+            WHEN #{game.id} THEN #{game.reviewCount}
+        </foreach>
+        END,
+        download_count = CASE id
+        <foreach collection="list" item="game" separator=" ">
+            WHEN #{game.id} THEN #{game.downloadCount}
+        </foreach>
+        END,
+        resource_count = CASE id
+        <foreach collection="list" item="game" separator=" ">
+            WHEN #{game.id} THEN #{game.resourceCount}
         </foreach>
         END
         WHERE id IN
-        <foreach collection="list" item="item" open="(" separator="," close=")">
-            #{item.id}
+        <foreach collection="list" item="game" open="(" separator="," close=")">
+            #{game.id}
         </foreach>
     </update>
 

@@ -5,6 +5,7 @@ import com.catgal.common.autoconfigure.mq.RabbitMqHelper;
 import com.catgal.common.context.UserContext;
 import com.catgal.common.domain.vo.SignVO;
 import com.catgal.common.enums.PointsType;
+import com.catgal.common.exception.BusinessException;
 import com.catgal.common.utils.StringUtils;
 import com.catgal.server.service.ISignService;
 import lombok.RequiredArgsConstructor;
@@ -37,7 +38,7 @@ public class SignService implements ISignService {
     public void signIn() {
         Long userId = UserContext.getUserId();
         if (userId == null) {
-            throw new RuntimeException("用户不存在");
+            throw BusinessException.unauthorized("用户未登录");
         }
 
         LocalDate date = LocalDate.now();
@@ -60,13 +61,19 @@ public class SignService implements ISignService {
 
         // 发放萌萌点、更新连续签到等业务逻辑
         UserCutePointsMessage message = new UserCutePointsMessage();
+        message.setBizId("sign:" + userId + ":" + date);
         message.setUserId(userId);
         message.setPointsType(PointsType.SIGN_IN);
         message.setCutePointsChange(SIGN_IN_REWARD);
 
-        mqHelper.send(CUTE_POINT_EXCHANGE,
-                StringUtils.format(BIZ_TYPE_CUTE_POINTS_KEY, SIGN_IN)
-                ,message);
+        try {
+            mqHelper.send(CUTE_POINT_EXCHANGE,
+                    StringUtils.format(BIZ_TYPE_CUTE_POINTS_KEY, SIGN_IN), message);
+        } catch (RuntimeException exception) {
+            // 发送失败时恢复签到位，使客户端重试能够重新投递积分消息。
+            redisTemplate.opsForValue().setBit(signKey, offset, false);
+            throw exception;
+        }
 
     }
 
@@ -74,7 +81,7 @@ public class SignService implements ISignService {
     public SignVO getSignRecords() {
         Long userId = UserContext.getUserId();
         if (userId == null) {
-            throw new RuntimeException("用户不存在");
+            throw BusinessException.unauthorized("用户未登录");
         }
 
         LocalDate today = LocalDate.now();

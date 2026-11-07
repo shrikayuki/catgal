@@ -5,6 +5,7 @@ import com.catgal.common.context.UserContext;
 import com.catgal.common.domain.dto.PageDTO;
 import com.catgal.common.domain.query.GamePageQuery;
 import com.catgal.common.domain.vo.GameVO;
+import com.catgal.common.exception.BusinessException;
 import com.catgal.common.utils.BeanUtils;
 import com.catgal.common.utils.CollUtils;
 import com.catgal.common.utils.StringUtils;
@@ -15,16 +16,16 @@ import com.catgal.server.service.IFavoriteItemService;
 import com.catgal.server.service.IGameService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.catgal.server.service.IGameStatsService;
+import com.catgal.server.service.RedisCounterService;
 import com.catgal.server.task.GameIdsCacheTask;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.catgal.common.constants.RedisConstant.LOOK_COUNT_KEY;
+import static com.catgal.common.constants.RedisConstant.*;
 
 /**
  * <p>
@@ -40,8 +41,8 @@ import static com.catgal.common.constants.RedisConstant.LOOK_COUNT_KEY;
 public class GameServiceImpl extends ServiceImpl<GameMapper, Game> implements IGameService {
 
     private final IFavoriteItemService favoriteItemService;
-    private final StringRedisTemplate redisTemplate;
     private final IGameStatsService statsService;
+    private final RedisCounterService redisCounterService;
     private final GameIdsCacheTask gameIdsCacheTask;
 
 
@@ -87,12 +88,13 @@ public class GameServiceImpl extends ServiceImpl<GameMapper, Game> implements IG
     public GameVO getGameById(Long id) {
         Long userId = UserContext.getUserId();
         //实现浏览人数缓存
-        String lookKey = StringUtils.format(LOOK_COUNT_KEY, id);
-        redisTemplate.opsForValue().increment(lookKey);
         Game game = getById(id);
+        if (game == null || !Integer.valueOf(1).equals(game.getStatus())) {
+            throw BusinessException.notFound("游戏不存在或未发布");
+        }
         GameVO vo = BeanUtils.copyBean(game, GameVO.class);
         if (BeanUtils.isEmpty(vo)){
-            throw new RuntimeException("404");
+            throw BusinessException.notFound("游戏不存在");
         }
         FavoriteItem one = favoriteItemService.lambdaQuery().eq(FavoriteItem::getGameId, id).eq(FavoriteItem::getUserId, userId).one();
         boolean isMyFavorite = one != null;
@@ -121,6 +123,14 @@ public class GameServiceImpl extends ServiceImpl<GameMapper, Game> implements IG
         }
 
         vo.setRating(statsService.getRating(id));
+        String lookKey = StringUtils.format(LOOK_COUNT_KEY, id);
+        redisCounterService.changeAndMark(
+                lookKey,
+                game.getViewCount() == null ? 0L : game.getViewCount(),
+                1L,
+                GAME_STATS_COUNT_CHANGE_SET_KEY,
+                id
+        );
         //TODO 标签 会社待实现
 
         return vo;
@@ -130,6 +140,9 @@ public class GameServiceImpl extends ServiceImpl<GameMapper, Game> implements IG
         Long userId = UserContext.getUserId();
         FavoriteItem one = favoriteItemService.lambdaQuery().eq(FavoriteItem::getGameId, id).eq(FavoriteItem::getUserId, userId).one();
         Game game = getById(id);
+        if (game == null || !Integer.valueOf(1).equals(game.getStatus())) {
+            throw BusinessException.notFound("游戏不存在或未发布");
+        }
         GameVO vo = new GameVO();
         vo.setId(game.getId());
         vo.setName(game.getName());

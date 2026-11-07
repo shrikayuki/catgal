@@ -28,4 +28,6 @@ public interface IPrizePoolService extends IService<PrizePool> {
     void checkRemainStockAndCreateDrawRecord(DrawRecord message);
 
     void prizeStockToDB(String prizePoolChangeSetKey, Integer batchSize);
+
+    void refreshPrizeCache(String month);
 }

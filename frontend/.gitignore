@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.local
+nginx/*.log
+nginx/*.pid
+logs/*
+!logs/.gitkeep
+temp/*
+!temp/.gitkeep

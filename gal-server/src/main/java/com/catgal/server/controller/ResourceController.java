@@ -9,6 +9,7 @@ import com.catgal.common.domain.vo.GameResourceVO;
 import com.catgal.common.domain.vo.GameReviewVO;
 import com.catgal.common.domain.vo.ResourceUrlVO;
 import com.catgal.server.service.IResourceService;
+import com.catgal.server.mvc.annotation.LoginRequired;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +38,7 @@ public class ResourceController {
     }
 
     @GetMapping("/{id}")
+    @LoginRequired
     @Operation(summary = "根据资源id查看资源链接")
     public R<ResourceUrlVO> getResourceUrl(@PathVariable Long id){
         ResourceUrlVO vo = resourceService.getResourceUrl(id);
@@ -44,12 +46,14 @@ public class ResourceController {
     }
 
     @PostMapping("/{id}/download")
+    @LoginRequired
     @Operation(summary = "下载游戏下的资源")
     public R<String> download(@PathVariable Long id) {
         return R.ok(resourceService.download(id));
     }
 
     @PostMapping
+    @LoginRequired
     @Operation(summary = "发布资源")
     public R<Void> addResource(@Valid @RequestBody ResourceAddDTO dto) {
         resourceService.addResource(dto);
@@ -57,6 +61,7 @@ public class ResourceController {
     }
 
     @DeleteMapping("/{id}")
+    @LoginRequired
     @Operation(summary = "删除资源")
     public R<Void> deleteResource(@PathVariable Long id) {
         resourceService.deleteResource(id);

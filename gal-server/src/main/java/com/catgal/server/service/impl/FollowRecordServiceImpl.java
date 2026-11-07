@@ -7,6 +7,7 @@ import com.catgal.common.context.UserContext;
 import com.catgal.common.domain.dto.PageDTO;
 import com.catgal.common.domain.query.PageQuery;
 import com.catgal.common.domain.vo.UserFansOrFollowsVO;
+import com.catgal.common.exception.BusinessException;
 import com.catgal.common.utils.CollUtils;
 import com.catgal.common.utils.StringUtils;
 import com.catgal.server.domain.po.FollowRecord;
@@ -19,14 +20,18 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.time.LocalDateTime;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static com.catgal.common.constants.RedisConstant.*;
+import static com.catgal.server.redis.RedisScriptLoader.load;
 
 /**
  * <p>
@@ -41,54 +46,50 @@ import static com.catgal.common.constants.RedisConstant.*;
 @Slf4j
 public class FollowRecordServiceImpl extends ServiceImpl<FollowRecordMapper, FollowRecord> implements IFollowRecordService {
 
+    private static final DefaultRedisScript<Long> FOLLOW_SCRIPT =
+            load("lua/follow/add.lua", Long.class);
+    private static final DefaultRedisScript<Long> UNFOLLOW_SCRIPT =
+            load("lua/follow/remove.lua", Long.class);
+
     private final StringRedisTemplate redisTemplate;
     private final UserMapper userMapper;
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Boolean follow(Long followedId) {
         // 1. 校验
         Long fanId = UserContext.getUserId();
         if (fanId == null) {
-            log.error("用户未登录");
-            return false;
+            throw BusinessException.unauthorized("用户未登录");
         }
         if (fanId.equals(followedId)) {
-            log.error("不可关注自己");
-            return false;
+            throw BusinessException.badRequest("不可关注自己");
+        }
+        if (followedId == null || userMapper.selectById(followedId) == null) {
+            throw BusinessException.notFound("被关注用户不存在");
         }
 
         String fanKey = StringUtils.format(USER_FANS_KEY, followedId);
         String followKey = StringUtils.format(USER_FOLLOWS_KEY, fanId);
 
-        // 2. 检查是否已关注（防重复）
-        Double score = redisTemplate.opsForZSet().score(followKey, followedId.toString());
-        if (score != null) {
-            log.info("已经关注过了");
-            return true;
-        }
-
         long now = System.currentTimeMillis();
-
-        // 3. 使用 Lua 脚本保证原子性（或手动回滚）
+        FollowRecord record = new FollowRecord()
+                .setFanId(fanId)
+                .setFollowedId(followedId)
+                .setFollowTime(LocalDateTime.now())
+                .setCreateTime(LocalDateTime.now());
         try {
-            // 添加粉丝关系
-            redisTemplate.opsForZSet().add(fanKey, fanId.toString(), now);
-            // 添加关注关系
-            redisTemplate.opsForZSet().add(followKey, followedId.toString(), now);
-
-            // 5. 标记需要同步到 MySQL
-            redisTemplate.opsForSet().add(FOLLOW_CHANGE_SET_KEY, followedId.toString());
-
-            log.info("关注成功: {} -> {}", fanId, followedId);
-
-        } catch (Exception e) {
-            log.error("关注失败", e);
-            // 回滚
-            redisTemplate.opsForZSet().remove(fanKey, fanId.toString());
-            redisTemplate.opsForZSet().remove(followKey, followedId.toString());
-            return false;
+            baseMapper.insert(record);
+        } catch (DuplicateKeyException duplicate) {
+            // 数据库唯一键是并发关注的最终防线；重复请求按幂等成功处理并修复缓存。
+            log.info("重复关注按幂等成功处理: {} -> {}", fanId, followedId);
         }
+        Long cached = redisTemplate.execute(FOLLOW_SCRIPT, List.of(fanKey, followKey),
+                String.valueOf(now), String.valueOf(fanId), String.valueOf(followedId));
+        if (cached == null) {
+            throw BusinessException.internalError("关注缓存更新失败");
+        }
+        log.info("关注成功: {} -> {}", fanId, followedId);
 
         return true;
     }
@@ -98,36 +99,24 @@ public class FollowRecordServiceImpl extends ServiceImpl<FollowRecordMapper, Fol
     public Boolean unfollow(Long followedId) {
         Long fanId = UserContext.getUserId();
         if (fanId == null) {
-            log.error("用户未登录");
-            return false;
+            throw BusinessException.unauthorized("用户未登录");
         }
         if (fanId.equals(followedId)) {
-            log.error("不可取消关注自己");
-            return false;
+            throw BusinessException.badRequest("不可取消关注自己");
         }
 
         String fanKey = StringUtils.format(USER_FANS_KEY, followedId);
         String followKey = StringUtils.format(USER_FOLLOWS_KEY, fanId);
 
-        try {
-            // 1. 删除关系
-            Long removed1 = redisTemplate.opsForZSet().remove(fanKey, fanId.toString());
-            Long removed2 = redisTemplate.opsForZSet().remove(followKey, followedId.toString());
-
-            if (removed1 == null || removed1 == 0) {
-                log.info("未关注过");
-                return true;
-            }
-
-            // 2. 标记需要同步到 MySQL
-            redisTemplate.opsForSet().add(FOLLOW_CHANGE_SET_KEY, followedId.toString());
-
-            log.info("取消关注成功: {} -> {}", fanId, followedId);
-
-        } catch (Exception e) {
-            log.error("取消关注失败", e);
-            return false;
+        baseMapper.delete(new LambdaQueryWrapper<FollowRecord>()
+                .eq(FollowRecord::getFanId, fanId)
+                .eq(FollowRecord::getFollowedId, followedId));
+        Long cached = redisTemplate.execute(UNFOLLOW_SCRIPT, List.of(fanKey, followKey),
+                String.valueOf(fanId), String.valueOf(followedId));
+        if (cached == null) {
+            throw BusinessException.internalError("取消关注缓存更新失败");
         }
+        log.info("取消关注成功: {} -> {}", fanId, followedId);
 
         return true;
     }
@@ -137,7 +126,7 @@ public class FollowRecordServiceImpl extends ServiceImpl<FollowRecordMapper, Fol
         Long curUserId = UserContext.getUserId();
         if (userId == null) {
             if (curUserId == null) {
-                throw new RuntimeException("当前用户未登录");
+                throw BusinessException.unauthorized("当前用户未登录");
             }
             userId = curUserId;
         }
@@ -153,7 +142,7 @@ public class FollowRecordServiceImpl extends ServiceImpl<FollowRecordMapper, Fol
         Long curUserId = UserContext.getUserId();
         if (userId == null) {
             if (curUserId == null) {
-                throw new RuntimeException("当前用户未登录");
+                throw BusinessException.unauthorized("当前用户未登录");
             }
             userId = curUserId;
         }
@@ -348,7 +337,12 @@ public class FollowRecordServiceImpl extends ServiceImpl<FollowRecordMapper, Fol
     public boolean isMyFollow(Long userId, Long targetId){
         String followKey = StringUtils.format(USER_FOLLOWS_KEY, userId);
         Double score = redisTemplate.opsForZSet().score(followKey, targetId.toString());
-        return score != null;
+        if (score != null) {
+            return true;
+        }
+        return baseMapper.selectCount(new LambdaQueryWrapper<FollowRecord>()
+                .eq(FollowRecord::getFanId, userId)
+                .eq(FollowRecord::getFollowedId, targetId)) > 0;
 
     }
 }

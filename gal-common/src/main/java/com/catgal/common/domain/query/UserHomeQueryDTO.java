@@ -36,7 +36,7 @@ public class UserHomeQueryDTO extends PageQuery {
 
     @Schema(description = "目标用户ID（不传则查当前登录用户）")
     @Min(1)
-    private Integer userId;
+    private Long userId;
 
     @Schema(description = "Tab类型：1-评论，2-评价，3-收藏夹，4-发布资源", example = "1")
     @NotNull(message = "Tab不能为空")

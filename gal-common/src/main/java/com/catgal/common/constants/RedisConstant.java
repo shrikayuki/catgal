@@ -9,6 +9,9 @@ public class RedisConstant {
 
     // 点赞业务ids key:like:bizIds:{bizType} ->set(bizId)
     public static final String LIKE_BIZ_IDS_KEY = "like:bizIds:{}";
+    // 点赞明细与点赞计数分别消费，不能复用业务ID索引集合。
+    public static final String LIKE_RECORD_CHANGE_SET_KEY = "like:record:change:{}";
+    public static final String LIKE_COUNT_CHANGE_SET_KEY = "like:count:change:{}";
 
     //收藏业务key key: user:favorite:{folderId} -> game:user  1-N-1
     public static final String USER_FAVORITE_KEY = "user:favorite:{}";
@@ -16,11 +19,14 @@ public class RedisConstant {
     // 变化的收藏夹ID集合（Set）
     public static final String FAVORITE_CHANGE_SET_KEY = "fav:folder:change";
 
-    // 变化的游戏ID集合（收藏数变化）
-    public static final String GAME_FAVORITE_COUNT_CHANGE_SET_KEY = "fav:game:count:change";
-    public static final String GAME_LOOK_COUNT_CHANGE_SET_KEY = "look:game:count:change";
-    public static final String GAME_COMMENT_COUNT_CHANGE_SET_KEY = "comment:game:count:change";
-    public static final String GAME_REVIEW_COUNT_CHANGE_SET_KEY = "review:game:count:change";
+    // 变化的游戏ID集合（统计数变化）
+    public static final String GAME_STATS_COUNT_CHANGE_SET_KEY = "game:stats:count:change";
+    public static final String GAME_STATS_SYNC_LOCK_KEY = "lock:game:stats:sync";
+    // 变化的资源Id集合 （resource下载数变化）
+    public static final String RESOURCE_DOWNLOAD_COUNT_CHANGE_SET_KEY = "resource:download:count:change";
+    public static final String RESOURCE_DOWNLOAD_SYNC_LOCK_KEY = "lock:resource:download:sync";
+
+
 
     //游戏收藏数key: favorite:count:gameId
     public static final String FAVORITE_COUNT_KEY = "favorite:count:{}";
@@ -56,8 +62,14 @@ public class RedisConstant {
     //存用户id集合
     public static final String CUTE_POINTS_CHANGE_SET_KEY = "cute:points:change";
 
+    // 萌萌点消息幂等标记，参数为消息业务号 bizId
+    public static final String CUTE_POINTS_MESSAGE_PROCESSED_KEY = "cute:points:message:{}";
+
     //抽奖相关key
     public static final String PRIZE_DATE_CACHE_KEY = "prize:{}:cache";
+
+    // 管理员维护当月奖池时阻止新的库存扣减
+    public static final String PRIZE_POOL_ADMIN_LOCK_KEY = "lock:prize:admin:{}";
 
     public static final String PRIZE_POOL_CHANGE_SET_KEY = "prize:pool:change";
 

@@ -5,6 +5,7 @@ import com.catgal.common.domain.R;
 import com.catgal.common.domain.dto.FavoriteDTO;
 import com.catgal.common.domain.dto.LikeDTO;
 import com.catgal.server.service.IFavoriteItemService;
+import com.catgal.server.mvc.annotation.LoginRequired;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/favorite")
 @RequiredArgsConstructor
+@LoginRequired
 public class FavoriteItemController {
 
     private final IFavoriteItemService favoriteService;

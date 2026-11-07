@@ -32,6 +32,11 @@ public class DrawRecord implements Serializable {
     private Long id;
 
     /**
+     * 抽奖业务幂等号，MQ 重投时保持不变。
+     */
+    private String bizId;
+
+    /**
      * 奖品ID
      */
     private Long prizeId;

@@ -11,6 +11,7 @@ import com.catgal.common.domain.dto.PrizeStockUpdateDTO;
 import com.catgal.common.domain.vo.PrizeVO;
 import com.catgal.common.domain.vo.UserPrizeVO;
 import com.catgal.common.enums.PointsType;
+import com.catgal.common.exception.BusinessException;
 import com.catgal.common.utils.BeanUtils;import com.catgal.common.utils.CollUtils;
 import com.catgal.common.utils.JsonUtils;
 
@@ -26,6 +27,7 @@ import com.catgal.server.service.IPrizePoolService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.catgal.server.service.IUserCutePointsService;
 import com.catgal.server.service.IUserService;
+import com.catgal.server.service.RedisDirtySetProcessor;
 import com.github.benmanes.caffeine.cache.Cache;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +48,8 @@ import static com.catgal.common.constants.DateFormatConstant.YM_FORMATTER;
 import static com.catgal.common.constants.MqConstants.Exchange.CUTE_POINT_EXCHANGE;
 import static com.catgal.common.constants.MqConstants.Key.BIZ_TYPE_CUTE_POINTS_KEY;
 import static com.catgal.common.constants.RedisConstant.PRIZE_DATE_CACHE_KEY;
+import static com.catgal.common.constants.RedisConstant.PRIZE_POOL_ADMIN_LOCK_KEY;
+import static com.catgal.server.redis.RedisScriptLoader.load;
 
 
 /**
@@ -61,11 +65,15 @@ import static com.catgal.common.constants.RedisConstant.PRIZE_DATE_CACHE_KEY;
 @RequiredArgsConstructor
 public class PrizePoolServiceImpl extends ServiceImpl<PrizePoolMapper, PrizePool> implements IPrizePoolService {
 
+    private static final DefaultRedisScript<Long> DECREMENT_STOCK_SCRIPT =
+            load("lua/prize/decrement-stock.lua", Long.class);
+
     private final StringRedisTemplate redisTemplate;
     private final IUserCutePointsService userCutePointsService;
     private final RabbitMqHelper mqHelper;
     private final PrizePoolMapper prizePoolMapper;
     private final DrawRecordMapper drawRecordMapper;
+    private final RedisDirtySetProcessor dirtySetProcessor;
 
 
     @Override
@@ -133,7 +141,13 @@ public class PrizePoolServiceImpl extends ServiceImpl<PrizePoolMapper, PrizePool
     public UserPrizeVO drawPrizePool() {
         Long userId = UserContext.getUserId();
         if (userId == null) {
-            throw new RuntimeException("用户不存在");
+            throw BusinessException.unauthorized("用户未登录");
+        }
+
+        String currentMonth = LocalDate.now().format(YM_FORMATTER);
+        String maintenanceLock = StringUtils.format(PRIZE_POOL_ADMIN_LOCK_KEY, currentMonth);
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(maintenanceLock))) {
+            throw BusinessException.conflict("奖池正在维护，请稍后重试");
         }
 
         // 1. 获取当前奖池（包含实时库存）
@@ -144,19 +158,30 @@ public class PrizePoolServiceImpl extends ServiceImpl<PrizePoolMapper, PrizePool
 
         // 3. 校验是否有可用奖品
         if (weightMap.isEmpty()) {
-            throw new RuntimeException("暂无可用奖品");
+            throw BusinessException.conflict("暂无可用奖品");
         }
 
         // 4. 抽奖
         UserPrizeVO userPrizeVO = doDraw(userId, weightMap);
+        String drawBizId = UUID.randomUUID().toString();
 
         // 5. 扣减库存（如果是有限库存）
         boolean success = decrementPrizeStock(userPrizeVO.getId());
         if (!success) {
-            throw new RuntimeException("库存扣减失败");
+            throw BusinessException.conflict("库存扣减失败");
         }
+        // 库存扣减成功后再发送积分扣减，避免维护锁或库存冲突时仍扣用户积分。
+        UserCutePointsMessage pointsMessage = new UserCutePointsMessage();
+        pointsMessage.setBizId(drawBizId);
+        pointsMessage.setUserId(userId);
+        pointsMessage.setPointsType(PointsType.LOTTERY_COST);
+        pointsMessage.setCutePointsChange(PRIZE_POOL_CONSUME);
+        mqHelper.send(CUTE_POINT_EXCHANGE,
+                StringUtils.format(BIZ_TYPE_CUTE_POINTS_KEY, DRAW_CONSUMED), pointsMessage);
+
         // 6.发MQ消息增加中奖记录
         DrawRecord drawRecord = new DrawRecord();
+        drawRecord.setBizId(drawBizId);
         drawRecord.setUserId(userId);
         drawRecord.setPrizeId(userPrizeVO.getId());
         mqHelper.send(MqConstants.Exchange.DRAW_RECORD_EXCHANGE, MqConstants.Key.DRAW_RECORD_KEY, drawRecord);
@@ -169,15 +194,14 @@ public class PrizePoolServiceImpl extends ServiceImpl<PrizePoolMapper, PrizePool
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void checkRemainStockAndCreateDrawRecord(DrawRecord message) {
-        //prizePoolMapper.decrementPrizeStock(message.getPrizeId());
-        redisTemplate.opsForSet().add(RedisConstant.PRIZE_POOL_CHANGE_SET_KEY, String.valueOf(message.getPrizeId()));
-        //更新记录 谢谢参与不存
-        PrizePool prize = getById(message.getPrizeId());
-        if (Objects.equals(prize.getPrizeName(), "谢谢参与")) {
-            log.error("不参与中奖记录");
-            return;
+        if (message == null || message.getUserId() == null || message.getPrizeId() == null
+                || StringUtils.isBlank(message.getBizId())) {
+            throw BusinessException.badRequest("抽奖记录消息缺少必要字段");
         }
-        drawRecordMapper.insert(message);
+        int inserted = drawRecordMapper.insertIdempotent(message);
+        if (inserted == 0) {
+            log.info("忽略重复抽奖记录消息, bizId={}", message.getBizId());
+        }
 
     }
 
@@ -186,15 +210,7 @@ public class PrizePoolServiceImpl extends ServiceImpl<PrizePoolMapper, PrizePool
         String currentMonth = LocalDate.now().format(YM_FORMATTER);
         String hashKey = StringUtils.format(PRIZE_DATE_CACHE_KEY, currentMonth);
 
-        int totalSynced = 0;
-
-        while (true) {
-            // 1. 从 Set 中批量取出奖品ID
-            List<String> prizeIds = redisTemplate.opsForSet().pop(redisKey, batchSize);
-            if (CollUtils.isEmpty(prizeIds)) {
-                break;
-            }
-
+        int processed = dirtySetProcessor.processBatch(redisKey, batchSize, true, prizeIds -> {
             // 2. 批量从 Hash 获取数据
             List<Object> dataList = redisTemplate.opsForHash().multiGet(hashKey,
                     prizeIds.stream().map(id -> (Object) id).collect(Collectors.toList()));
@@ -204,7 +220,9 @@ public class PrizePoolServiceImpl extends ServiceImpl<PrizePoolMapper, PrizePool
             List<PrizeStockUpdateDTO> updateList = new ArrayList<>();
 
             for (int i = 0; i < prizeIds.size(); i++) {
-                if (dataList.get(i) == null) continue;
+                if (dataList.get(i) == null) {
+                    throw new IllegalStateException("奖池缓存缺失，拒绝确认库存同步: prizeId=" + prizeIds.get(i));
+                }
 
                 PrizeVO prizeVO = JSONUtil.toBean(dataList.get(i).toString(), PrizeVO.class);
 
@@ -217,12 +235,26 @@ public class PrizePoolServiceImpl extends ServiceImpl<PrizePoolMapper, PrizePool
             // 4. 一条SQL批量更新
             if (!updateList.isEmpty()) {
                 int updated = prizePoolMapper.batchUpdateRemainStock(updateList);
-                totalSynced += updated;
-                log.debug("批量同步库存: 本次{}条, 累计{}条", updated, totalSynced);
+                log.debug("批量同步库存: 本次{}条", updated);
             }
-        }
+        });
+        log.info("库存同步完成，共处理{}条", processed);
+    }
 
-        log.info("库存同步完成，共{}条", totalSynced);
+    @Override
+    public void refreshPrizeCache(String month) {
+        String hashKey = StringUtils.format(PRIZE_DATE_CACHE_KEY, month);
+        List<PrizeVO> prizes = getPoolInfoByMonth(month);
+        redisTemplate.delete(hashKey);
+        if (CollUtils.isEmpty(prizes)) {
+            return;
+        }
+        Map<String, String> values = prizes.stream().collect(Collectors.toMap(
+                prize -> prize.getId().toString(),
+                JsonUtils::toJsonStr,
+                (left, right) -> left
+        ));
+        redisTemplate.opsForHash().putAll(hashKey, values);
     }
 
     private boolean decrementPrizeStock(Long prizeId) {
@@ -230,40 +262,25 @@ public class PrizePoolServiceImpl extends ServiceImpl<PrizePoolMapper, PrizePool
         String month = YM_FORMATTER.format(LocalDate.now());
         String hashKey = StringUtils.format(PRIZE_DATE_CACHE_KEY, month);
 
-        String prizeJson = (String) redisTemplate.opsForHash().get(hashKey, String.valueOf(prizeId));
-        PrizeVO prize = JsonUtils.toBean(prizeJson, PrizeVO.class);
-
-        // 如果 totalStock == 0，说明是无限库存，不需要扣
-        if (prize.getTotalStock() == 0) {
-            return true;
-        }
-
-        // 有限库存才执行扣减
-        String script =
-                "local prize = redis.call('hget', KEYS[1], KEYS[2]) " +
-                        "if not prize then return 0 end " +
-                        "local obj = cjson.decode(prize) " +
-                        "if obj.remainStock >= tonumber(ARGV[1]) then " +
-                        "    obj.remainStock = obj.remainStock - tonumber(ARGV[1]) " +
-                        "    redis.call('hset', KEYS[1], KEYS[2], cjson.encode(obj)) " +
-                        "    return 1 " +
-                        "end " +
-                        "return 0";
-
+        String maintenanceLock = StringUtils.format(PRIZE_POOL_ADMIN_LOCK_KEY, month);
+        // 无限库存和有限库存都进入同一 Lua；这样维护锁检查与库存判断保持原子。
         Long result = redisTemplate.execute(
-                new DefaultRedisScript<>(script, Long.class),
-                List.of(hashKey, String.valueOf(prizeId)),
+                DECREMENT_STOCK_SCRIPT,
+                List.of(hashKey, maintenanceLock, RedisConstant.PRIZE_POOL_CHANGE_SET_KEY),
+                String.valueOf(prizeId),
                 String.valueOf(1)
         );
-
+        if (result != null && result == -1) {
+            throw BusinessException.conflict("奖池正在维护，请稍后重试");
+        }
         return result != null && result == 1;
     }
 
     private UserPrizeVO doDraw(Long userId, TreeMap<Integer, Long> weightMap) {
         Integer userCutePointsCache = userCutePointsService.getUserCutePointsCache(userId);
 
-        if (userCutePointsCache == null || userCutePointsCache <= -PRIZE_POOL_CONSUME) {
-            throw new RuntimeException("用户积分不足");
+        if (userCutePointsCache == null || userCutePointsCache < -PRIZE_POOL_CONSUME) {
+            throw BusinessException.conflict("用户积分不足");
         }
         // 获取总权重（TreeMap的最后一个key）
         int totalWeight = weightMap.lastKey();
@@ -275,16 +292,8 @@ public class PrizePoolServiceImpl extends ServiceImpl<PrizePoolMapper, PrizePool
         Map.Entry<Integer, Long> entry = weightMap.ceilingEntry(randomNum);
 
         if (entry == null) {
-            throw new RuntimeException("抽奖异常");
+            throw BusinessException.internalError("抽奖异常");
         }
-        // 扣减积分
-        UserCutePointsMessage message = new UserCutePointsMessage();
-        message.setUserId(userId);
-        message.setPointsType(PointsType.LOTTERY_COST);
-        message.setCutePointsChange(PRIZE_POOL_CONSUME);
-        mqHelper.send(CUTE_POINT_EXCHANGE, StringUtils.format(BIZ_TYPE_CUTE_POINTS_KEY, DRAW_CONSUMED), message);
-
-
         // 返回结果
         UserPrizeVO result = new UserPrizeVO();
         result.setUserId(userId);

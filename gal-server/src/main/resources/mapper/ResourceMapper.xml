@@ -2,4 +2,18 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.catgal.server.mapper.ResourceMapper">
 
+    <!-- 批量更新资源下载量 -->
+    <update id="batchUpdateResourceStats" parameterType="list">
+        UPDATE resource
+        SET download_count = CASE id
+        <foreach collection="list" item="resource" separator=" ">
+            WHEN #{resource.id} THEN #{resource.downloadCount}
+        </foreach>
+        END
+        WHERE id IN
+        <foreach collection="list" item="resource" open="(" separator="," close=")">
+            #{resource.id}
+        </foreach>
+    </update>
+
 </mapper>

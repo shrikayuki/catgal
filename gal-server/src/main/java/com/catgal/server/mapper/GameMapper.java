@@ -2,6 +2,7 @@ package com.catgal.server.mapper;
 
 import com.catgal.server.domain.po.Game;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
@@ -15,5 +16,5 @@ import java.util.List;
  */
 public interface GameMapper extends BaseMapper<Game> {
 
-    void batchUpdateFavoriteCount(List<Game> list);
+    int batchUpdateGameStats(@Param("list") List<Game> gamesToUpdate);
 }

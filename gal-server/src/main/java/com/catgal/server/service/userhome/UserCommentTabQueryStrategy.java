@@ -1,0 +1,50 @@
+package com.catgal.server.service.userhome;
+
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.catgal.common.domain.dto.PageDTO;
+import com.catgal.common.domain.query.UserHomeQueryDTO;
+import com.catgal.common.domain.vo.UserCommentVO;
+import com.catgal.common.enums.UserHomeTabEnum;
+import com.catgal.common.utils.BeanUtils;
+import com.catgal.common.utils.CollUtils;
+import com.catgal.server.domain.po.Comment;
+import com.catgal.server.service.ICommentService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+@Component
+@RequiredArgsConstructor
+public class UserCommentTabQueryStrategy implements UserHomeTabQueryStrategy {
+
+    private final ICommentService commentService;
+    private final UserHomeGameLookup gameLookup;
+
+    @Override
+    public UserHomeTabEnum supports() {
+        return UserHomeTabEnum.COMMENT;
+    }
+
+    @Override
+    public PageDTO<UserCommentVO> query(UserHomeQueryDTO query, Long userId, boolean includePrivate) {
+        Page<Comment> page = commentService.lambdaQuery()
+                .eq(Comment::getUserId, userId)
+                .page(query.toMpPageDefaultSortByCreateTimeDesc());
+        List<Comment> records = page.getRecords();
+        if (CollUtils.isEmpty(records)) {
+            return PageDTO.empty(page);
+        }
+        Map<Long, String> gameNames = gameLookup.getGameNameMap(records.stream()
+                .map(Comment::getGameId)
+                .collect(Collectors.toSet()));
+        List<UserCommentVO> values = records.stream().map(comment -> {
+            UserCommentVO value = BeanUtils.copyProperties(comment, UserCommentVO.class);
+            value.setGameName(gameNames.getOrDefault(comment.getGameId(), ""));
+            return value;
+        }).collect(Collectors.toList());
+        return PageDTO.of(page, values);
+    }
+}

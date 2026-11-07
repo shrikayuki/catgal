@@ -6,10 +6,12 @@ import com.catgal.common.domain.dto.PageDTO;
 import com.catgal.common.domain.dto.ResourceAddDTO;
 import com.catgal.common.domain.query.GameQuery;
 import com.catgal.common.domain.vo.*;
+import com.catgal.common.exception.BusinessException;
 import com.catgal.common.utils.BeanUtils;
 import com.catgal.common.utils.CollUtils;
 import com.catgal.common.utils.StringUtils;
 import com.catgal.server.domain.po.Comment;
+import com.catgal.server.domain.po.Game;
 import com.catgal.server.domain.po.GameReview;
 import com.catgal.server.domain.po.Resource;
 import com.catgal.server.domain.po.User;
@@ -19,9 +21,9 @@ import com.catgal.server.service.IGameService;
 import com.catgal.server.service.IGameStatsService;
 import com.catgal.server.service.ILikeRecordService;
 import com.catgal.server.service.IResourceService;
+import com.catgal.server.service.RedisCounterService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,9 +32,9 @@ import java.util.stream.Collectors;
 
 import static com.catgal.common.constants.LikeBizTypeConstant.LIKE_TYPE_RESOURCE;
 import static com.catgal.common.constants.LikeBizTypeConstant.LIKE_TYPE_REVIEW;
-import static com.catgal.common.constants.RedisConstant.GAME_DOWNLOAD_COUNT_KEY;
-import static com.catgal.common.constants.RedisConstant.RESOURCE_DOWNLOAD_COUNT_KEY;
+import static com.catgal.common.constants.RedisConstant.*;
 import static com.catgal.common.constants.ResourceConstant.OFFICIAL_RESOURCE;
+import static com.catgal.common.constants.ResourceConstant.USER_RESOURCE;
 import static com.catgal.common.constants.UserRoleConstant.*;
 
 /**
@@ -51,13 +53,13 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceMapper, Resource> i
     private final IGameService gameService;
     private final ILikeRecordService likeService;
     private final IGameStatsService statsService;
-    private final RedisTemplate<Object, Object> redisTemplate;
+    private final RedisCounterService redisCounterService;
 
     @Override
     public GameConnectVO<GameResourceVO> pageGameResource(GameQuery query) {
         Long gameId = query.getGameId();
         if (query.getGameId() == null) {
-            throw new RuntimeException("游戏Id不能为空");
+            throw BusinessException.badRequest("游戏Id不能为空");
         }
         GameVO gameInfo = gameService.getGameSimpleById(gameId);
         // 先转换基本对象
@@ -80,12 +82,12 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceMapper, Resource> i
     @Override
     public ResourceUrlVO getResourceUrl(Long id) {
         if (id == null) {
-            throw new RuntimeException("参数不能为空");
+            throw BusinessException.badRequest("参数不能为空");
         }
         Resource resource = getById(id);
-        if (resource == null) {
+        if (resource == null || !Objects.equals(resource.getStatus(), 1)) {
             log.error("资源不存在");
-            throw new RuntimeException("404");
+            throw BusinessException.notFound("资源不存在");
         }
         return BeanUtils.copyProperties(resource, ResourceUrlVO.class);
     }
@@ -95,18 +97,36 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceMapper, Resource> i
     public void addResource(ResourceAddDTO dto) {
         Long userId = UserContext.getUserId();
         if (userId == null) {
-            throw new RuntimeException("用户未登录");
+            throw BusinessException.unauthorized("用户未登录");
         }
         User user = userMapper.selectById(userId);
-        if (user.getRole().equals(USER)){
-            throw new RuntimeException("请申请为创作者才能发布作品");
+        if (user == null) {
+            throw BusinessException.unauthorized("用户不存在");
         }
+        if (user.getRole().equals(USER)){
+            throw BusinessException.forbidden("请申请为创作者才能发布作品");
+        }
+        Game game = gameService.getById(dto.getGameId());
+        if (game == null || !Objects.equals(game.getStatus(), 1)) {
+            throw BusinessException.conflict("只能向已发布游戏提交资源");
+        }
+        int initialCount = statsService.getGameResourceCount(dto.getGameId());
         Resource resource = BeanUtils.copyProperties(dto, Resource.class);
         resource.setUserId(userId);
         if (user.getRole().equals(ADMIN)){
             resource.setIsOfficial(OFFICIAL_RESOURCE);
+            resource.setStatus(1);
+        } else {
+            resource.setIsOfficial(USER_RESOURCE);
+            resource.setStatus(2);
         }
-        save(resource);
+        if (!save(resource)) {
+            throw BusinessException.internalError("资源发布失败");
+        }
+        if (Objects.equals(resource.getStatus(), 1)) {
+            redisCounterService.changeAndMark(StringUtils.format(RESOURCE_COUNT_KEY, dto.getGameId()),
+                    initialCount, 1L, GAME_STATS_COUNT_CHANGE_SET_KEY, dto.getGameId());
+        }
 
 
     }
@@ -116,27 +136,41 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceMapper, Resource> i
     public void deleteResource(Long id) {
         Long userId = UserContext.getUserId();
         if (userId == null) {
-            throw new RuntimeException("用户未登录");
+            throw BusinessException.unauthorized("用户未登录");
         }
         User user = userMapper.selectById(userId);
         Resource resource = getById(id);
+        if (resource == null) {
+            throw BusinessException.notFound("资源不存在");
+        }
         boolean canDelete = user.getRole().equals(ADMIN) || (resource.getUserId().equals(userId) && user.getRole().equals(CREATOR));
         if (!canDelete) {
-            throw new RuntimeException("您无权删除该资源");
+            throw BusinessException.forbidden("您无权删除该资源");
         }
+        int initialCount = statsService.getGameResourceCount(resource.getGameId());
         removeById(resource);
+        if (Objects.equals(resource.getStatus(), 1)) {
+            redisCounterService.changeAndMark(StringUtils.format(RESOURCE_COUNT_KEY, resource.getGameId()),
+                    initialCount, -1L, GAME_STATS_COUNT_CHANGE_SET_KEY, resource.getGameId());
+        }
 
     }
 
     @Override
     public String download(Long id) {
         Resource resource = getById(id);
-        if (resource == null) {
-            throw new RuntimeException("404");
+        if (resource == null || !Objects.equals(resource.getStatus(), 1)) {
+            throw BusinessException.notFound("资源不存在");
         }
         Long gameId = resource.getGameId();
-        redisTemplate.opsForValue().increment(StringUtils.format(GAME_DOWNLOAD_COUNT_KEY, gameId));
-        redisTemplate.opsForValue().increment(StringUtils.format(RESOURCE_DOWNLOAD_COUNT_KEY, id));
+        int initialGameDownloads = statsService.getGameDownLoadCount(gameId);
+        int initialResourceDownloads = statsService.getResourceDownLoadCount(id);
+        redisCounterService.changeAndMark(StringUtils.format(GAME_DOWNLOAD_COUNT_KEY, gameId),
+                initialGameDownloads, 1L, GAME_STATS_COUNT_CHANGE_SET_KEY, gameId);
+        redisCounterService.changeAndMark(StringUtils.format(RESOURCE_DOWNLOAD_COUNT_KEY, id),
+                initialResourceDownloads, 1L, RESOURCE_DOWNLOAD_COUNT_CHANGE_SET_KEY, id);
+
+
         return resource.getDownloadUrl();
     }
 

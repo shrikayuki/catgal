@@ -3,54 +3,70 @@ package com.catgal.server.service.impl;
 import Message.LikeCountMessage;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.catgal.common.autoconfigure.mq.RabbitMqHelper;
-import com.catgal.common.context.UserContext;
 import com.catgal.common.domain.dto.LikeDTO;
 import com.catgal.common.utils.CollUtils;
 import com.catgal.common.utils.StringUtils;
 import com.catgal.server.domain.po.LikeRecord;
 import com.catgal.server.mapper.LikeRecordMapper;
+import com.catgal.server.security.CurrentUserProvider;
 import com.catgal.server.service.ILikeRecordService;
+import com.catgal.server.service.LikeTargetValidator;
+import com.catgal.server.service.RedisDirtySetProcessor;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static com.catgal.common.constants.MqConstants.Exchange.LIKE_COUNT_EXCHANGE;
 import static com.catgal.common.constants.MqConstants.Key.BIZ_TYPE_LIKED_TIMES_KEY;
 import static com.catgal.common.constants.MqConstants.Queue.LIKE_COUNT_QUEUE_TEMPLATE;
 import static com.catgal.common.constants.RedisConstant.*;
+import static com.catgal.server.redis.RedisScriptLoader.load;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class LikeRecordServiceImpl extends ServiceImpl<LikeRecordMapper, LikeRecord> implements ILikeRecordService {
 
+    private static final DefaultRedisScript<Long> LIKE_SCRIPT =
+            load("lua/like/add.lua", Long.class);
+    private static final DefaultRedisScript<Long> UNLIKE_SCRIPT =
+            load("lua/like/remove.lua", Long.class);
+
     private final StringRedisTemplate redisTemplate;
     private final RabbitMqHelper mqHelper;
+    private final RedisDirtySetProcessor dirtySetProcessor;
+    private final LikeTargetValidator likeTargetValidator;
+    private final CurrentUserProvider currentUserProvider;
 
     @Override
     public Boolean like(LikeDTO dto) {
+        Long userId = currentUserProvider.requireUserId();
         log.info("点赞请求: type={}, targetId={}, userId={}",
-                dto.getType(), dto.getTargetId(), UserContext.getUserId());
+                dto.getType(), dto.getTargetId(), userId);
 
         String type = dto.getType();
         Long bizId = dto.getTargetId();
-        Long userId = UserContext.getUserId();
+        likeTargetValidator.requireLikeable(type, bizId);
 
         // 1. 用户点赞集合（用于去重和判断是否点赞）
         String userKey = StringUtils.format(LIKE_USER_KEY, type, bizId);
-        Long added = redisTemplate.opsForSet().add(userKey, String.valueOf(userId));
+        String bizIdsKey = StringUtils.format(LIKE_BIZ_IDS_KEY, type);
+        Long added = redisTemplate.execute(LIKE_SCRIPT, List.of(
+                        userKey,
+                        bizIdsKey,
+                        StringUtils.format(LIKE_RECORD_CHANGE_SET_KEY, type),
+                        StringUtils.format(LIKE_COUNT_CHANGE_SET_KEY, type)
+                ),
+                String.valueOf(userId), String.valueOf(bizId));
 
         if (added != null && added > 0) {
-            //3.该业务的点赞id
-            String bizIdsKey = StringUtils.format(LIKE_BIZ_IDS_KEY, type);
-            redisTemplate.opsForSet().add(bizIdsKey, String.valueOf(bizId));
             return true;
         }
 
@@ -60,25 +76,26 @@ public class LikeRecordServiceImpl extends ServiceImpl<LikeRecordMapper, LikeRec
 
     @Override
     public Boolean unlike(LikeDTO dto) {
+        Long userId = currentUserProvider.requireUserId();
         log.info("取消点赞请求: type={}, targetId={}, userId={}",
-                dto.getType(), dto.getTargetId(), UserContext.getUserId());
+                dto.getType(), dto.getTargetId(), userId);
 
         String type = dto.getType();
         Long bizId = dto.getTargetId();
-        Long userId = UserContext.getUserId();
+        likeTargetValidator.requireSupportedType(type);
 
         // 1. 从用户点赞集合中移除
         String userKey = StringUtils.format(LIKE_USER_KEY, type, bizId);
-        Long removed = redisTemplate.opsForSet().remove(userKey, String.valueOf(userId));
+        String bizIdsKey = StringUtils.format(LIKE_BIZ_IDS_KEY, type);
+        Long removed = redisTemplate.execute(UNLIKE_SCRIPT, List.of(
+                        userKey,
+                        bizIdsKey,
+                        StringUtils.format(LIKE_RECORD_CHANGE_SET_KEY, type),
+                        StringUtils.format(LIKE_COUNT_CHANGE_SET_KEY, type)
+                ),
+                String.valueOf(userId), String.valueOf(bizId));
 
         if (removed != null && removed > 0) {
-            //3.该业务的点赞id
-            String bizIdsKey = StringUtils.format(LIKE_BIZ_IDS_KEY, type);
-            Long remaining = redisTemplate.opsForSet().size(userKey);
-            if (remaining == 0) {
-                redisTemplate.opsForSet().remove(bizIdsKey, String.valueOf(bizId));
-                log.info("该业务无点赞记录");
-            }
             return true;
         }
 
@@ -96,8 +113,8 @@ public class LikeRecordServiceImpl extends ServiceImpl<LikeRecordMapper, LikeRec
         List<Object> results = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
             for (Long targetId : targetIds) {
                 String key = StringUtils.format(LIKE_USER_KEY, type, targetId);
-                byte[] keyBytes = key.getBytes();
-                byte[] memberBytes = userId.toString().getBytes();
+                byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+                byte[] memberBytes = userId.toString().getBytes(StandardCharsets.UTF_8);
                 connection.setCommands().sIsMember(keyBytes, memberBytes);
             }
             return null;
@@ -125,7 +142,7 @@ public class LikeRecordServiceImpl extends ServiceImpl<LikeRecordMapper, LikeRec
         List<Object> results = redisTemplate.executePipelined((RedisCallback<Object>) connection -> {
             for (Long bizId : bizIds) {
                 String userKey = StringUtils.format(LIKE_USER_KEY, type, bizId);
-                byte[] keyBytes = userKey.getBytes();
+                byte[] keyBytes = userKey.getBytes(StandardCharsets.UTF_8);
                 connection.setCommands().sCard(keyBytes);
             }
             return null;
@@ -145,63 +162,23 @@ public class LikeRecordServiceImpl extends ServiceImpl<LikeRecordMapper, LikeRec
     }
 
 
-    /**
-     * 获取并移除需要同步的业务ID（增量用）
-     */
-    private Set<Long> popBizIds(String type, int maxSize) {
-        String key = StringUtils.format(LIKE_BIZ_IDS_KEY, type);
-        List<String> bizIdStrs = redisTemplate.opsForSet().pop(key, maxSize);
-
-        if (CollUtils.isEmpty(bizIdStrs)) {
-            return new HashSet<>();
-        }
-
-        return bizIdStrs.stream().map(Long::valueOf).collect(Collectors.toSet());
-    }
-
-    /**
-     * 获取所有业务ID（全量用，不移除）
-     */
-    private Set<Long> getBizIds(String type) {
-        String key = StringUtils.format(LIKE_BIZ_IDS_KEY, type);
-        Set<String> bizIdStrs = redisTemplate.opsForSet().members(key);
-
-        if (CollUtils.isEmpty(bizIdStrs)) {
-            return new HashSet<>();
-        }
-
-        return bizIdStrs.stream().map(Long::valueOf).collect(Collectors.toSet());
-    }
-
     @Override
-    @Transactional
     public void fullSyncLikeRecordsToDB(String bizType, int batchSize, int batchBizSize) {
-        Set<Long> bizIds = getBizIds(bizType);
-        if (CollUtils.isEmpty(bizIds)) {
-            log.info("没有需要同步的业务数据");
-            return;
-        }
-
-        int totalRecords = 0;
-        List<Long> bizIdList = new ArrayList<>(bizIds);
-
-        for (int i = 0; i < bizIdList.size(); i += batchBizSize) {
-            int end = Math.min(i + batchBizSize, bizIdList.size());
-            List<Long> batchBizIds = bizIdList.subList(i, end);
-
-            for (Long bizId : batchBizIds) {
+        String changeKey = StringUtils.format(LIKE_RECORD_CHANGE_SET_KEY, bizType);
+        int processed = dirtySetProcessor.processBatch(changeKey, batchBizSize, true, claimed -> {
+            for (String bizIdValue : claimed) {
+                Long bizId = Long.valueOf(bizIdValue);
                 String userKey = StringUtils.format(LIKE_USER_KEY, bizType, bizId);
                 Set<String> userIds = redisTemplate.opsForSet().members(userKey);
-
-                if (CollUtils.isEmpty(userIds)) {
-                    continue;
-                }
-
                 baseMapper.delete(
                         new LambdaQueryWrapper<LikeRecord>()
                                 .eq(LikeRecord::getType, bizType)
                                 .eq(LikeRecord::getTargetId, bizId)
                 );
+
+                if (CollUtils.isEmpty(userIds)) {
+                    continue;
+                }
 
                 List<LikeRecord> records = new ArrayList<>();
                 for (String userIdStr : userIds) {
@@ -215,53 +192,30 @@ public class LikeRecordServiceImpl extends ServiceImpl<LikeRecordMapper, LikeRec
                 for (int j = 0; j < records.size(); j += batchSize) {
                     int batchEnd = Math.min(j + batchSize, records.size());
                     saveBatch(records.subList(j, batchEnd));
-                    totalRecords += (batchEnd - j);
                 }
             }
-
-            log.info("已处理 {}/{} 个业务", end, bizIdList.size());
-        }
-
-        log.info("全量同步完成, 业务数={}, 点赞记录数={}", bizIdList.size(), totalRecords);
+        });
+        log.info("点赞明细同步完成, bizType={}, 业务数={}", bizType, processed);
     }
 
     @Override
     public void readLikedTimesAndSendMessage(String bizType, int maxBizSize) {
-        // 使用 pop 增量读取并移除
-        Set<Long> bizIds = popBizIds(bizType, maxBizSize);
-        if (CollUtils.isEmpty(bizIds)) {
-            log.debug("没有需要同步的业务数据, bizType={}", bizType);
-            return;
-        }
-
-        List<LikeCountMessage> allMessages = new ArrayList<>();
-
-        for (Long bizId : bizIds) {
-            String userKey = StringUtils.format(LIKE_USER_KEY, bizType, bizId);
-            Long likeCount = redisTemplate.opsForSet().size(userKey);
-
-            if (likeCount == null || likeCount == 0) {
-                // 点赞数为0，不需要处理（已经在 pop 时移除了）
-                log.debug("跳过 bizId={}, likeCount=0", bizId);
-                continue;
+        String changeKey = StringUtils.format(LIKE_COUNT_CHANGE_SET_KEY, bizType);
+        dirtySetProcessor.processBatch(changeKey, maxBizSize, false, claimed -> {
+            List<LikeCountMessage> messages = new ArrayList<>(claimed.size());
+            for (String bizIdValue : claimed) {
+                Long bizId = Long.valueOf(bizIdValue);
+                Long likeCount = redisTemplate.opsForSet().size(StringUtils.format(LIKE_USER_KEY, bizType, bizId));
+                messages.add(LikeCountMessage.builder()
+                        .bizType(bizType)
+                        .bizId(bizId)
+                        .likeCount(likeCount == null ? 0L : likeCount)
+                        .build());
             }
-
-            LikeCountMessage message = LikeCountMessage.builder()
-                    .bizType(bizType)
-                    .bizId(bizId)
-                    .likeCount(likeCount)
-                    .build();
-            allMessages.add(message);
-        }
-
-        if (!allMessages.isEmpty()) {
-            mqHelper.send(
-                    LIKE_COUNT_EXCHANGE,
-                    StringUtils.format(BIZ_TYPE_LIKED_TIMES_KEY, bizType),
-                    allMessages
-            );
-            log.info("发送点赞数消息, bizType={}, 数量={}", bizType, allMessages.size());
-        }
+            mqHelper.send(LIKE_COUNT_EXCHANGE,
+                    StringUtils.format(BIZ_TYPE_LIKED_TIMES_KEY, bizType), messages);
+            log.info("发送点赞数消息, bizType={}, 数量={}", bizType, messages.size());
+        });
     }
 
     /**
@@ -282,6 +236,8 @@ public class LikeRecordServiceImpl extends ServiceImpl<LikeRecordMapper, LikeRec
         // 2. 从全局业务ID集合中移除
         String bizIdsKey = StringUtils.format(LIKE_BIZ_IDS_KEY, bizType);
         redisTemplate.opsForSet().remove(bizIdsKey, String.valueOf(bizId));
+        redisTemplate.opsForSet().add(StringUtils.format(LIKE_RECORD_CHANGE_SET_KEY, bizType), String.valueOf(bizId));
+        redisTemplate.opsForSet().add(StringUtils.format(LIKE_COUNT_CHANGE_SET_KEY, bizType), String.valueOf(bizId));
 
         log.debug("清理点赞缓存, bizType={}, bizId={}", bizType, bizId);
     }

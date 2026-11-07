@@ -6,12 +6,12 @@ import com.catgal.common.utils.StringUtils;
 import com.catgal.server.domain.po.UserCutePoints;
 import com.catgal.server.mapper.UserCutePointsMapper;
 import com.catgal.server.service.IUserCutePointsService;
+import com.catgal.server.service.RedisDirtySetProcessor;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Set;
@@ -33,61 +33,72 @@ import static com.catgal.common.constants.RedisConstant.CUTE_POINTS_KEY;
 public class UserCutePointsServiceImpl extends ServiceImpl<UserCutePointsMapper, UserCutePoints> implements IUserCutePointsService {
 
     private final StringRedisTemplate redisTemplate;
+    private final RedisDirtySetProcessor dirtySetProcessor;
 
 
     @Override
     public Integer getUserCutePointsCache(Long userId) {
-        String key = StringUtils.format(CUTE_POINTS_KEY, userId);
-        String pointKey = StringUtils.format(CUTE_POINTS_KEY, userId);
-        Integer cutePoints = getHashInt(pointKey, RedisConstant.CUTE_POINTS_HASH_KEY);
-        if (cutePoints == null || cutePoints <= 0) {
-            UserCutePoints userCute = getById(userId);
-            if (userCute == null) {
-                log.debug("数据还未同步");
-                return null;
-            }
-            Integer newCutePoints = userCute.getCutePoints();
-            redisTemplate.opsForHash().increment(key, RedisConstant.CUTE_POINTS_HASH_KEY, newCutePoints);
-            return newCutePoints;
-
+        if (userId == null) {
+            return null;
         }
-        return cutePoints;
+        String key = StringUtils.format(CUTE_POINTS_KEY, userId);
+        Integer cachedPoints = getHashIntNullable(key, RedisConstant.CUTE_POINTS_HASH_KEY);
+        Integer cachedEarned = getHashIntNullable(key, RedisConstant.TOTAL_EARNED_HASH_KEY);
+        Integer cachedSpent = getHashIntNullable(key, RedisConstant.TOTAL_SPENT_HASH_KEY);
+        if (cachedPoints != null && cachedEarned != null && cachedSpent != null) {
+            return cachedPoints;
+        }
+
+        UserCutePoints stored = getById(userId);
+        int cutePoints = valueOrZero(stored == null ? null : stored.getCutePoints());
+        int totalEarned = valueOrZero(stored == null ? null : stored.getTotalEarned());
+        int totalSpent = valueOrZero(stored == null ? null : stored.getTotalSpent());
+
+        // 只填充缺失字段，避免并发积分消息已写入后又被数据库旧值覆盖。
+        redisTemplate.opsForHash().putIfAbsent(key, RedisConstant.CUTE_POINTS_HASH_KEY,
+                String.valueOf(cutePoints));
+        redisTemplate.opsForHash().putIfAbsent(key, RedisConstant.TOTAL_EARNED_HASH_KEY,
+                String.valueOf(totalEarned));
+        redisTemplate.opsForHash().putIfAbsent(key, RedisConstant.TOTAL_SPENT_HASH_KEY,
+                String.valueOf(totalSpent));
+
+        Integer initialized = getHashIntNullable(key, RedisConstant.CUTE_POINTS_HASH_KEY);
+        return initialized == null ? cutePoints : initialized;
     }
 
     @Override
-    @Transactional
     public void userCutePointsToDB(String key, Integer batchSize) {
-        Long size = redisTemplate.opsForSet().size(key);
-        if (size == null || size <= 0) {
-            log.debug("没有需要同步的用户萌萌点数据");
-            return;
-        }
-        while (true) {
-            List<String> IdStrList = redisTemplate.opsForSet().pop(RedisConstant.CUTE_POINTS_CHANGE_SET_KEY, batchSize);
-            if (CollUtils.isEmpty(IdStrList)) {
-                log.debug("用户萌萌点记录同步结束,退出");
-                break;
-            }
-            Set<UserCutePoints> userPointsList = IdStrList.stream().map(id -> {
+        int processed = dirtySetProcessor.processBatch(key, batchSize, true, claimed -> {
+            Set<UserCutePoints> userPointsList = claimed.stream().map(id -> {
+                Long userId = Long.parseLong(id);
+                // 先补齐可能部分丢失的 Hash 字段，避免用默认 0 覆盖 MySQL 的累计值。
+                getUserCutePointsCache(userId);
                 UserCutePoints userCutePoints = new UserCutePoints();
-                userCutePoints.setUserId(Long.parseLong(id));
+                userCutePoints.setUserId(userId);
                 String pointKey = StringUtils.format(CUTE_POINTS_KEY, id);
-                userCutePoints.setCutePoints(getHashInt(pointKey, RedisConstant.CUTE_POINTS_HASH_KEY));
-                userCutePoints.setTotalEarned(getHashInt(pointKey, RedisConstant.TOTAL_EARNED_HASH_KEY));
-                userCutePoints.setTotalSpent(getHashInt(pointKey, RedisConstant.TOTAL_SPENT_HASH_KEY));
+                if (!Boolean.TRUE.equals(redisTemplate.hasKey(pointKey))) {
+                    throw new IllegalStateException("萌萌点缓存缺失，拒绝用 0 覆盖数据库: userId=" + id);
+                }
+                userCutePoints.setCutePoints(valueOrZero(getHashIntNullable(pointKey, RedisConstant.CUTE_POINTS_HASH_KEY)));
+                userCutePoints.setTotalEarned(valueOrZero(getHashIntNullable(pointKey, RedisConstant.TOTAL_EARNED_HASH_KEY)));
+                userCutePoints.setTotalSpent(valueOrZero(getHashIntNullable(pointKey, RedisConstant.TOTAL_SPENT_HASH_KEY)));
                 return userCutePoints;
             }).collect(Collectors.toSet());
             if (CollUtils.isEmpty(userPointsList)) {
-                continue;
+                return;
             }
             saveOrUpdateBatch(userPointsList);
-
-        }
+        });
+        log.info("用户萌萌点同步完成, 处理用户数={}", processed);
     }
 
-    private int getHashInt(String key, String field) {
+    private Integer getHashIntNullable(String key, String field) {
         Object value = redisTemplate.opsForHash().get(key, field);
-        if (value == null) return 0;
+        if (value == null) return null;
         return Integer.parseInt(value.toString());
+    }
+
+    private int valueOrZero(Integer value) {
+        return value == null ? 0 : Math.max(0, value);
     }
 }

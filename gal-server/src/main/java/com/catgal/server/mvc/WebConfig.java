@@ -10,6 +10,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class WebConfig implements WebMvcConfigurer {
 
     private final LoginInterceptor loginInterceptor;
+    private final LoginRequiredInterceptor loginRequiredInterceptor;
+    private final AdminInterceptor adminInterceptor;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
@@ -22,6 +24,13 @@ public class WebConfig implements WebMvcConfigurer {
                         "/v3/api-docs/**",
                         "/doc.html",
                         "/webjars/**"
-                );
+                )
+                .order(0);
+        registry.addInterceptor(loginRequiredInterceptor)
+                .addPathPatterns("/**")
+                .order(1);
+        registry.addInterceptor(adminInterceptor)
+                .addPathPatterns("/admin/**")
+                .order(2);
     }
 }

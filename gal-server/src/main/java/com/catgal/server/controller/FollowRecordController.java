@@ -7,6 +7,7 @@ import com.catgal.common.domain.query.PageQuery;
 import com.catgal.common.domain.vo.UserFansOrFollowsVO;
 import com.catgal.server.domain.po.FollowRecord;
 import com.catgal.server.service.IFollowRecordService;
+import com.catgal.server.mvc.annotation.LoginRequired;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -27,12 +28,14 @@ public class FollowRecordController {
     private final IFollowRecordService followService;
 
     @PostMapping("/{followedId}")
+    @LoginRequired
     @Operation(description = "关注, 路径参数是被关注的用户的id")
     public R<Boolean> follow(@PathVariable("followedId") Long followedId) {
         return R.ok(followService.follow(followedId));
     }
 
     @DeleteMapping("/{followedId}")
+    @LoginRequired
     @Operation(description = "取消关注")
     public R<Boolean> unfollow(@PathVariable("followedId") Long followedId) {
         return R.ok(followService.unfollow(followedId));

@@ -7,6 +7,7 @@ import com.catgal.common.domain.dto.CreateFolderDTO;
 import com.catgal.common.domain.dto.PageDTO;
 import com.catgal.common.domain.query.PageQuery;
 import com.catgal.common.domain.vo.FolderGameVO;
+import com.catgal.common.exception.BusinessException;
 import com.catgal.common.utils.BeanUtils;
 import com.catgal.common.utils.CollUtils;
 import com.catgal.common.utils.StringUtils;
@@ -57,9 +58,11 @@ public class FavoriteFolderServiceImpl extends ServiceImpl<FavoriteFolderMapper,
     @Transactional
     public void createFolder(CreateFolderDTO dto) {
         Long userId = UserContext.getUserId();
-        if (userId == null || dto == null) {
-            log.error("用户未登录或参数为空");
-            throw new RuntimeException();
+        if (userId == null) {
+            throw BusinessException.unauthorized("用户未登录");
+        }
+        if (dto == null) {
+            throw BusinessException.badRequest("请求参数不能为空");
         }
         boolean exists = folderMapper.exists(
                 new LambdaQueryWrapper<FavoriteFolder>()
@@ -68,7 +71,7 @@ public class FavoriteFolderServiceImpl extends ServiceImpl<FavoriteFolderMapper,
         );
 
         if (exists) {
-            throw new RuntimeException("收藏夹名称已存在");
+            throw BusinessException.conflict("收藏夹名称已存在");
         }
 
         FavoriteFolder favoriteFolder = BeanUtils.copyProperties(dto, FavoriteFolder.class);
@@ -84,12 +87,12 @@ public class FavoriteFolderServiceImpl extends ServiceImpl<FavoriteFolderMapper,
         // 1. 查询收藏夹是否存在
         FavoriteFolder folder = folderMapper.selectById(id);
         if (folder == null) {
-            throw new RuntimeException("收藏夹不存在");
+            throw BusinessException.notFound("收藏夹不存在");
         }
 
         // 2. 校验是否属于当前用户
         if (!folder.getUserId().equals(userId)) {
-            throw new RuntimeException("无权删除");
+            throw BusinessException.forbidden("无权删除");
         }
 
         // 3. 删除收藏夹下的所有收藏项
@@ -101,7 +104,7 @@ public class FavoriteFolderServiceImpl extends ServiceImpl<FavoriteFolderMapper,
         //获得该收藏夹下的所有游戏 收藏夹Id(1)-> gameId(N)-userId (1)
         Boolean success = favoriteService.unfavoriteBatch(id);
         if (!success) {
-            throw new RuntimeException("操作失败");
+            throw BusinessException.internalError("操作失败");
         }
 
         //批量取消收藏
@@ -127,12 +130,12 @@ public class FavoriteFolderServiceImpl extends ServiceImpl<FavoriteFolderMapper,
         // 1. 查询收藏夹是否存在
         FavoriteFolder folder = folderMapper.selectById(id);
         if (folder == null) {
-            throw new RuntimeException("收藏夹不存在");
+            throw BusinessException.notFound("收藏夹不存在");
         }
 
         // 2. 校验权限
         if (folder.getIsPublic() == 0 && !folder.getUserId().equals(userId)) {
-            throw new RuntimeException("无权查看");
+            throw BusinessException.forbidden("无权查看");
         }
 
         // 3. 分页查询收藏项

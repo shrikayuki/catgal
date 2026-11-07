@@ -23,6 +23,8 @@ public class RedisChatHistoryRepository implements ChatHistoryRepository {
     @Override
     public void save(String girlCode, Long userId, String sessionId) {
         String key = StringUtils.format(AI_GIRL_CONVERSATION_HISTORY_KEY, girlCode, userId);
+        // 数据库回灌或请求重试时不重复记录同一个会话。
+        redisTemplate.opsForList().remove(key, 0, sessionId);
         // 左推入，最新在最左边
         redisTemplate.opsForList().leftPush(key, sessionId);
         // 保留最近 50 条会话

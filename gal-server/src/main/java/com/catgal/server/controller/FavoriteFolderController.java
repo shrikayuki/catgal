@@ -7,6 +7,7 @@ import com.catgal.common.domain.dto.PageDTO;
 import com.catgal.common.domain.query.PageQuery;
 import com.catgal.common.domain.vo.FolderGameVO;
 import com.catgal.server.service.IFavoriteFolderService;
+import com.catgal.server.mvc.annotation.LoginRequired;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -32,6 +33,7 @@ public class FavoriteFolderController {
     private final IFavoriteFolderService folderService;
 
     @PostMapping
+    @LoginRequired
     @Operation(summary = "创建收藏夹")
     public R<Void> createFolder(@Valid @RequestBody CreateFolderDTO dto) {
         folderService.createFolder(dto);
@@ -39,6 +41,7 @@ public class FavoriteFolderController {
     }
 
     @DeleteMapping("/{id}")
+    @LoginRequired
     @Operation(summary = "删除收藏夹")
     public R<Void> deleteFolder(@PathVariable Long id) {
         folderService.deleteFolder(id);

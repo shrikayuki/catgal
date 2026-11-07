@@ -12,6 +12,7 @@ import com.catgal.common.domain.vo.CommentVO;
 import com.catgal.common.domain.vo.GameConnectVO;
 import com.catgal.common.domain.vo.UserCommentVO;
 import com.catgal.server.service.ICommentService;
+import com.catgal.server.mvc.annotation.LoginRequired;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -50,6 +51,7 @@ public class CommentController {
     }
 
     @PostMapping
+    @LoginRequired
     @Operation(summary = "发布根评论")
     public R<Void> addComment(@Valid @RequestBody CommentAddDTO dto) {
         commentService.addComment(dto);
@@ -57,6 +59,7 @@ public class CommentController {
     }
 
     @PostMapping("/reply")
+    @LoginRequired
     @Operation(summary = "回复接口")
     public R<Void> replyComment(@Valid @RequestBody ReplyCommentDTO dto) {
         commentService.replyComment(dto);
@@ -64,6 +67,7 @@ public class CommentController {
     }
 
     @DeleteMapping("/{id}")
+    @LoginRequired
     @Operation(summary = "删除用户自己的评论")
     public R<Void> deleteComment(@PathVariable Long id) {
         commentService.deleteComment(id);
