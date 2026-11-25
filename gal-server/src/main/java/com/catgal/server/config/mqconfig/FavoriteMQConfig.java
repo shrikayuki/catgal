@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 收藏同步通知的交换机、队列与绑定，消费者根据当前完整状态校准。
+ */
 package com.catgal.server.config.mqconfig;
 
 import com.catgal.common.constants.MqConstants;

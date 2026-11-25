@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 游戏详情内资源、评论和评价列表的公共分页条件，gameId 确定关联范围。
+ */
 package com.catgal.common.domain.query;
 
 import io.swagger.v3.oas.annotations.media.Schema;

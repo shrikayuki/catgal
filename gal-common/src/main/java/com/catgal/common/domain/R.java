@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * HTTP JSON 响应外壳，统一承载业务 code、msg、data 和请求追踪号。
+ * 静态工厂供 Controller 与异常处理器构造响应，HTTP 状态仍由 Web 层决定。
+ */
 package com.catgal.common.domain;
 
 import com.catgal.common.constants.Constant;
@@ -89,6 +94,7 @@ public class R<T> {
     /**
      * 设置请求ID（链式调用）
      */
+    // 统一响应从当前 MDC 读取追踪号，缺少 Web 过滤器上下文时按实现生成兜底值。
     public R<T> requestId(String requestId) {
         this.requestId = requestId;
         return this;

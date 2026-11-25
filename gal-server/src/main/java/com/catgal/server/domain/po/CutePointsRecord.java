@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 萌萌点流水的数据库映射对象，对应 cute_points_record 表。
+ * MyBatis-Plus 通过字段与映射注解读写记录，Controller 使用专用视图承载展示字段。
+ */
 package com.catgal.server.domain.po;
 
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -36,7 +41,8 @@ public class CutePointsRecord implements Serializable {
     private Integer cutePoints;
 
     /**
-     * 1-签到 2-喂宠物 3-被点赞 4-兑换消耗 5-赠送
+     * 新流水使用 PointsType.code，例如 1 签到、10 抽奖消耗。
+     * 历史记录保留原值，切换不会按旧字段注释批量重解释历史业务。
      */
     private Integer type;
 

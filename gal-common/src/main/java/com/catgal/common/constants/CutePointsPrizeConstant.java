@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 抽奖积分开销等业务常量，奖池抽取与积分消息使用相同约定。
+ */
 package com.catgal.common.constants;
 
 public class CutePointsPrizeConstant {

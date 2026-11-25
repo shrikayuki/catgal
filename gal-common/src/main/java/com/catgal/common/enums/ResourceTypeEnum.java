@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 资源形式枚举，数据库存储编码，接口按枚举语义解释。
+ */
 package com.catgal.common.enums;
 
 import com.baomidou.mybatisplus.annotation.EnumValue;

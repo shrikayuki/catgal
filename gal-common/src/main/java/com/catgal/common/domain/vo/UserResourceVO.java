@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 用户发布的资源的响应视图。
+ * 业务服务将数据库记录及关联信息装配为此类型，再由 Controller 放入统一响应。
+ */
 package com.catgal.common.domain.vo;
 
 import com.catgal.common.enums.LanguageEnum;
@@ -5,6 +10,9 @@ import com.catgal.common.enums.PlatformEnum;
 import com.catgal.common.enums.ResourceTypeEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -15,6 +23,17 @@ public class UserResourceVO {
 
     @Schema(description = "资源ID", example = "1")
     private Long id;
+    private String name;
+    private Integer status;
+
+    /** 仅本人主页装配审核信息，公开主页序列化时省略这些字段。 */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonSerialize(using = ToStringSerializer.class)
+    private Long revision;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private LocalDateTime reviewedAt;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String reviewReason;
 
     @Schema(description = "游戏ID")
     private Long gameId;

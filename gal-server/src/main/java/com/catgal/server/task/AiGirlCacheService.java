@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 角色模板的本地缓存，提供按 code 查询、启动加载和刷新。
+ */
 package com.catgal.server.task;
 
 

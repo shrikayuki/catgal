@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 游戏与标签关联的 MyBatis-Plus 实体服务。
+ * 本类提供基础 CRUD，资料关联替换和并发校验集中在 GameRelationsService。
+ */
 package com.catgal.server.service.impl;
 
 import com.catgal.server.domain.po.GameTag;

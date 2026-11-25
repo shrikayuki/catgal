@@ -1,3 +1,9 @@
+/*
+ * 阅读说明
+ * 分页查询游戏下的评价列表、发布游戏评价、删除用户评价的 HTTP 入口。
+ * 路由前缀 /review，请求绑定后委托 IGameReviewService。
+ * LoginRequired 标记的入口要求登录，上下文用户身份来自服务端认证。
+ */
 package com.catgal.server.controller;
 
 
@@ -8,6 +14,7 @@ import com.catgal.common.domain.vo.GameConnectVO;
 import com.catgal.common.domain.vo.GameReviewVO;
 import com.catgal.server.domain.po.Game;
 import com.catgal.server.service.IGameReviewService;
+import com.catgal.server.mvc.annotation.LoginRequired;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +44,7 @@ public class GameReviewController {
     }
 
     @PostMapping()
+    @LoginRequired
     @Operation(summary = "发布游戏评价")
     public R<Void> addGameReview(@Valid @RequestBody ReviewAddDTO dto){
         reviewService.addGameReview(dto);
@@ -44,6 +52,7 @@ public class GameReviewController {
     }
 
     @DeleteMapping("{id}")
+    @LoginRequired
     @Operation(summary = "删除用户评价")
     public R<Void> deleteGameReview(@PathVariable("id") Long id){
         reviewService.deleteGameReview(id);

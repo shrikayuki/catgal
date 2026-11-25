@@ -1,0 +1,40 @@
+name: catgal-storage
+services:
+  minio:
+    image: catgal/minio:release-20251015-v1
+    build:
+      context: .
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: ./secrets/minio.env
+        format: raw
+    ports:
+      - "${MINIO_API_BIND:-0.0.0.0}:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - /home/shinku/catgal-storage/data:/data
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+  initialize:
+    image: catgal/minio:release-20251015-v1
+    profiles: [setup]
+    entrypoint: ["/bin/sh", "/bootstrap/initialize.sh"]
+    env_file:
+      - path: ./secrets/minio.env
+        format: raw
+    volumes:
+      - ./initialize.sh:/bootstrap/initialize.sh:ro
+    depends_on:
+      minio:
+        condition: service_healthy

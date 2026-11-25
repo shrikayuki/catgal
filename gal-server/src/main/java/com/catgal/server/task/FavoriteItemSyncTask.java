@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 按计划批量同步收藏关系，具体锁、快照和失败恢复由收藏服务承担。
+ */
 package com.catgal.server.task;
 
 import com.catgal.server.service.IFavoriteItemService;

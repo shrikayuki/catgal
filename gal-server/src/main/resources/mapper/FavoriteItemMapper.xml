@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.catgal.server.mapper.FavoriteItemMapper">
+    <!-- FavoriteItemMapper 的复杂 SQL 映射，namespace 与 Java Mapper 全限定名对应。 -->
 
+    <!-- 只清理调用方已锁定并完成快照校验的收藏夹范围，集合参数使用绑定占位符。 -->
     <delete id="deleteByFolderIds">
         DELETE FROM favorite_item
         WHERE folder_id IN

@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 查询当前用户中奖记录，批量补充奖品名称与图片。
+ * 历史奖品缺失时保留中奖记录，并返回下架占位展示。
+ */
 package com.catgal.server.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
@@ -6,6 +11,7 @@ import com.catgal.common.context.UserContext;
 import com.catgal.common.domain.dto.PageDTO;
 import com.catgal.common.domain.query.PageQuery;
 import com.catgal.common.domain.vo.DrawRecordVO;
+import com.catgal.common.exception.BusinessException;
 import com.catgal.common.utils.BeanUtils;
 import com.catgal.common.utils.CollUtils;
 import com.catgal.server.domain.po.DrawRecord;
@@ -42,7 +48,7 @@ public class DrawRecordServiceImpl extends ServiceImpl<DrawRecordMapper, DrawRec
     public PageDTO<DrawRecordVO> queryMyPrizes(PageQuery query) {
         Long UserId = UserContext.getUserId();
         if (UserId == null) {
-            throw new RuntimeException("用户不存在");
+            throw BusinessException.unauthorized("用户未登录");
         }
         Page<DrawRecord> page = lambdaQuery().eq(DrawRecord::getUserId, UserId).page(query.toMpPageDefaultSortByCreateTimeDesc());
         List<DrawRecord> records = page.getRecords();
@@ -62,8 +68,14 @@ public class DrawRecordServiceImpl extends ServiceImpl<DrawRecordMapper, DrawRec
             DrawRecordVO drawRecordVO = BeanUtils.copyBean(record, DrawRecordVO.class);
             if (drawRecordVO != null) {
                 drawRecordVO.setUserId(UserId);
-                drawRecordVO.setPrizeImage(prizeMap.getOrDefault(record.getPrizeId(), null).getPrizeImage());
-                drawRecordVO.setPrizeName(prizeMap.getOrDefault(record.getPrizeId(), null).getPrizeName());
+                PrizePool prize = prizeMap.get(record.getPrizeId());
+                if (prize == null) {
+                    drawRecordVO.setPrizeImage(null);
+                    drawRecordVO.setPrizeName("奖品已下架");
+                } else {
+                    drawRecordVO.setPrizeImage(prize.getPrizeImage());
+                    drawRecordVO.setPrizeName(prize.getPrizeName());
+                }
             }
             vos.add(drawRecordVO);
 

@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 评价推荐等级枚举，将持久化编码映射为描述和展示表情。
+ */
 package com.catgal.common.enums;
 
 import com.baomidou.mybatisplus.annotation.EnumValue;

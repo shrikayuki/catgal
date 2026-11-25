@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 评价剧透等级枚举，输入编码验证与前端展示共用语义。
+ */
 package com.catgal.common.enums;
 
 import com.baomidou.mybatisplus.annotation.EnumValue;

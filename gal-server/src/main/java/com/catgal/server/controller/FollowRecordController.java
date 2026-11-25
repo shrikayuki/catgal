@@ -1,9 +1,22 @@
+/*
+ * 阅读说明
+ * 用户关注的 HTTP 入口。
+ * 路由前缀 /follow，请求绑定后委托 IFollowRecordService。
+ * LoginRequired 标记的入口要求登录，上下文用户身份来自服务端认证。
+ */
 package com.catgal.server.controller;
 
 
-import org.springframework.web.bind.annotation.RequestMapping;
-
-import org.springframework.web.bind.annotation.RestController;
+import com.catgal.common.domain.R;
+import com.catgal.common.domain.dto.PageDTO;
+import com.catgal.common.domain.query.PageQuery;
+import com.catgal.common.domain.vo.UserFansOrFollowsVO;
+import com.catgal.server.domain.po.FollowRecord;
+import com.catgal.server.service.IFollowRecordService;
+import com.catgal.server.mvc.annotation.LoginRequired;
+import io.swagger.v3.oas.annotations.Operation;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
 
 /**
  * <p>
@@ -14,7 +27,35 @@ import org.springframework.web.bind.annotation.RestController;
  * @since 2026-06-05
  */
 @RestController
-@RequestMapping("/follow-record")
+@RequiredArgsConstructor
+@RequestMapping("/follow")
 public class FollowRecordController {
 
+    private final IFollowRecordService followService;
+
+    @PostMapping("/{followedId}")
+    @LoginRequired
+    @Operation(description = "关注, 路径参数是被关注的用户的id")
+    public R<Boolean> follow(@PathVariable("followedId") Long followedId) {
+        return R.ok(followService.follow(followedId));
+    }
+
+    @DeleteMapping("/{followedId}")
+    @LoginRequired
+    @Operation(description = "取消关注")
+    public R<Boolean> unfollow(@PathVariable("followedId") Long followedId) {
+        return R.ok(followService.unfollow(followedId));
+    }
+
+    @GetMapping("/fans/page/{userId}")
+    @Operation(description = "查询用户粉丝, id为空代表是当前用户id")
+    public R<PageDTO<UserFansOrFollowsVO>> queryUserFansPage(@PathVariable("userId") Long userId, PageQuery query){
+        return R.ok(followService.queryUserFansPage(userId, query));
+    }
+
+    @GetMapping("/followings/page/{userId}")
+    @Operation(description = "查询用户关注, id为空表示是当前用户id")
+    public R<PageDTO<UserFansOrFollowsVO>> queryUserFollowsPage(@PathVariable("userId") Long userId, PageQuery query){
+        return R.ok(followService.queryUserFollowsPage(userId, query));
+    }
 }

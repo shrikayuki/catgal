@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 游戏评价响应的响应视图。
+ * 业务服务将数据库记录及关联信息装配为此类型，再由 Controller 放入统一响应。
+ */
 package com.catgal.common.domain.vo;
 
 import com.catgal.common.enums.PlayStatusEnum;
@@ -26,6 +31,9 @@ public class GameReviewVO {
 
     @Schema(description = "评分", example = "9")
     private Integer score;
+
+    @Schema(description = "玩家简评")
+    private String briefReview;
 
     @Schema(description = "推荐程度", example = "4")
     private RecommendLevelEnum recommendLevel;

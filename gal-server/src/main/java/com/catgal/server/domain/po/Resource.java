@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 游戏资源的数据库映射对象，对应 resource 表。
+ * MyBatis-Plus 通过字段与映射注解读写记录，Controller 使用专用视图承载展示字段。
+ */
 package com.catgal.server.domain.po;
 
 import com.baomidou.mybatisplus.annotation.*;
@@ -89,6 +94,13 @@ public class Resource implements Serializable {
 
     @Schema(description = "是否官方资源：0-用户上传，1-官方", example = "0")
     private Integer isOfficial;
+
+    /** 由数据库业务版本触发器维护，点赞、下载计数不会使编辑版本失效。 */
+    @com.fasterxml.jackson.databind.annotation.JsonSerialize(using = com.fasterxml.jackson.databind.ser.std.ToStringSerializer.class)
+    private Long revision;
+    private Long reviewedBy;
+    private LocalDateTime reviewedAt;
+    private String reviewReason;
 
     @TableField(fill = FieldFill.INSERT)
     @Schema(description = "创建时间")

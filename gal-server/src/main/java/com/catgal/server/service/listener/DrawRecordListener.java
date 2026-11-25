@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 排空旧中奖记录消息，业务号用于重复投递去重。ACTIVE 在抽奖事务中直接写中奖记录。
+ */
 package com.catgal.server.service.listener;
 
 import com.catgal.server.domain.po.DrawRecord;
@@ -25,7 +29,8 @@ public class DrawRecordListener {
 
     private final IPrizePoolService prizeService;
 
-    @RabbitListener(bindings = @QueueBinding(
+    @RabbitListener(id = "legacyDrawRecords", containerFactory = "rewardListenerContainerFactory",
+            autoStartup = "#{!@rewardControlServiceImpl.isActive()}", bindings = @QueueBinding(
             value = @Queue(name = DRAW_RECORD_QUEUE, durable = "true"),
             exchange = @Exchange(name = DRAW_RECORD_EXCHANGE),
             key = DRAW_RECORD_KEY

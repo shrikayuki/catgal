@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 积分流水业务类型枚举，签到、抽奖消费和奖励通过类型区分。
+ */
 package com.catgal.common.enums;
 
 import lombok.Getter;

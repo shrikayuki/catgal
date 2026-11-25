@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 游戏列表筛选与排序参数，检索实现分别对接 MySQL 和 ES。
+ * 平台、语言、标签、会社等条件由搜索端口解释，排序字段通过专用方法收敛。
+ */
 package com.catgal.common.domain.query;
 
 import com.baomidou.mybatisplus.core.metadata.OrderItem;
@@ -32,6 +37,9 @@ public class GamePageQuery extends PageQuery {
     // ========== 模糊匹配 ==========
     @Schema(description = "游戏名称（模糊匹配）")
     private String name;
+
+    @Schema(description = "联合搜索游戏名称、介绍、标签和会社，最多200字符。ES模式未指定排序时按相关性降序，MySQL回退采用现有字段排序。")
+    private String keyword;
 
     // ========== 时间筛选 ==========
     @Schema(description = "发售年份")
@@ -72,7 +80,7 @@ public class GamePageQuery extends PageQuery {
             }
             // 手动排序没有有效字段时，使用默认排序
             if (page.orders() == null || page.orders().isEmpty()) {
-                page.addOrder(OrderItem.desc("createTime"));
+                page.addOrder(OrderItem.desc("create_time"));
             }
             return page;
         }

@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 用户积分余额的数据库映射对象，对应 user_cute_points 表。
+ * MyBatis-Plus 通过字段与映射注解读写记录，Controller 使用专用视图承载展示字段。
+ */
 package com.catgal.server.domain.po;
 
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -42,6 +47,9 @@ public class UserCutePoints implements Serializable {
      * 累计消耗萌萌点
      */
     private Integer totalSpent;
+
+    /** 新事务每次变更递增，Redis 投影以此拒绝旧快照覆盖。 */
+    private Long revision;
 
     private LocalDateTime createTime;
 

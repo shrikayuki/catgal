@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 对象复制工具，支持单对象、列表和转换后补充字段。
+ * 复制只搬运属性，业务权限、脱敏和关联查询仍由调用方完成。
+ */
 package com.catgal.common.utils;
 
 
@@ -23,6 +28,7 @@ public class BeanUtils extends BeanUtil {
      * @param <T>     目标对象类型
      * @return 目标对象
      */
+    // 通过目标类型创建或复制对象，带 Convert 的重载在复制后执行额外映射。
     public static <R, T> T copyBean(R source, Class<T> clazz, Convert<R, T> convert) {
         T target = copyBean(source, clazz);
         if (convert != null) {
@@ -40,6 +46,7 @@ public class BeanUtils extends BeanUtil {
      * @param <T>     目标对象类型
      * @return 目标对象
      */
+    // 通过目标类型创建或复制对象，带 Convert 的重载在复制后执行额外映射。
     public static <R, T> T copyBean(R source, Class<T> clazz) {
         if (ObjectUtil.isEmpty(source)) {
             return null;
@@ -56,6 +63,7 @@ public class BeanUtils extends BeanUtil {
      * @param <T>   目标对象类型
      * @return 目标对象列表
      */
+    // 列表逐项转换后可通过回调补充业务字段，关联数据宜由调用方提前批量加载。
     public static <R, T> List<T> copyList(List<R> list, Class<T> clazz) {
         if (CollUtil.isEmpty(list)) {
             return CollUtils.emptyList();
@@ -73,6 +81,7 @@ public class BeanUtils extends BeanUtil {
      * @param <T>     目标对象类型
      * @return 目标对象列表
      */
+    // 列表逐项转换后可通过回调补充业务字段，关联数据宜由调用方提前批量加载。
     public static <R, T> List<T> copyList(List<R> list, Class<T> clazz, Convert<R, T> convert) {
         if (CollUtil.isEmpty(list)) {
             return CollUtils.emptyList();

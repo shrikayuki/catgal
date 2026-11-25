@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 用户角色数字约定，注册、授权和管理端角色维护共用。
+ */
 package com.catgal.common.constants;
 
 public class UserRoleConstant {

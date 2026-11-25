@@ -1,0 +1,21 @@
+[Unit]
+Description=Catgal Jenkins build and release worker
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/catgal-jenkins
+ExecStart=/usr/bin/python3 -B /opt/catgal-jenkins/release_queue.py watch
+Environment=DOCKER_BUILDKIT=1
+Restart=on-failure
+RestartSec=3
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/shinku/catgal-app /var/lib/catgal-jenkins
+
+[Install]
+WantedBy=multi-user.target

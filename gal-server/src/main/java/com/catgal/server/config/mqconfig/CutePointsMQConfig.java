@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 签到与抽奖积分事件的交换机、队列及路由绑定。
+ */
 package com.catgal.server.config.mqconfig;
 
 import com.catgal.common.constants.CutePointsTypeConstant;

@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 跨模块的字段名、请求头及公共配置常量。
+ * 修改持久化字段名或追踪头时，同时检查 SQL、排序构造与拦截器引用。
+ */
 package com.catgal.common.constants;
 
 public interface Constant {

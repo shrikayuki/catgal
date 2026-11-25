@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 公共 RabbitMQ 自动配置，装配 JSON 转换、错误交换机、错误队列与消息助手。
+ * 消费者耗尽重试后的消息由恢复器转发到错误通道。
+ */
 package com.catgal.common.autoconfigure.mq;
 
 import com.catgal.common.utils.StringUtils;
@@ -11,7 +16,6 @@ import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.amqp.rabbit.retry.MessageRecoverer;
-import org.springframework.amqp.rabbit.retry.RepublishMessageRecoverer;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.beans.factory.ObjectProvider;
@@ -67,15 +71,14 @@ public class MqConfig implements EnvironmentAware{
 
     /**
      * <h1>消息处理失败的重试策略</h1>
-     * 本地重试失败后，消息投递到专门的失败交换机和失败消息队列：error.queue
+     * 本地重试失败后，确认转发至应用错误队列，再由消费容器确认原投递。
      */
     @Bean
     @ConditionalOnClass(MessageRecoverer.class)
     @ConditionalOnMissingBean
-    public MessageRecoverer republishMessageRecoverer(RabbitTemplate rabbitTemplate){
-        // 消息处理失败后，发送到错误交换机：error.direct，RoutingKey默认是error.微服务名称
-        return new RepublishMessageRecoverer(
-                rabbitTemplate, ERROR_EXCHANGE, defaultErrorRoutingKey);
+    public MessageRecoverer republishMessageRecoverer(ConnectionFactory connectionFactory) {
+        // 实际交换机和路由保持原有绑定，公共恢复器服务点赞、收藏和积分监听器。
+        return new ConfirmedErrorMessageRecoverer(connectionFactory, ERROR_EXCHANGE, defaultErrorRoutingKey);
     }
 
     /**

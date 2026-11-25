@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 游戏作品的数据库映射对象，对应 game 表。
+ * MyBatis-Plus 通过字段与映射注解读写记录，Controller 使用专用视图承载展示字段。
+ */
 package com.catgal.server.domain.po;
 
 import java.math.BigDecimal;
@@ -41,6 +46,9 @@ public class Game implements Serializable {
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
 
+    /** Changes when administrators edit catalog data, relations or publication status. */
+    private Long revision = 0L;
+
     /**
      * 游戏名称
      */
@@ -50,6 +58,8 @@ public class Game implements Serializable {
      * 游戏封面URL
      */
     private String coverUrl;
+
+    private String coverFileId;
 
     /**
      * 游戏介绍

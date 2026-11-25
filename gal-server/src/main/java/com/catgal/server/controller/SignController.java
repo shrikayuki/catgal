@@ -1,8 +1,15 @@
+/*
+ * 阅读说明
+ * 签到的 HTTP 入口。
+ * 路由前缀 /sign，请求绑定后委托 ISignService。
+ * LoginRequired 标记的入口要求登录，上下文用户身份来自服务端认证。
+ */
 package com.catgal.server.controller;
 
 import com.catgal.common.domain.R;
 import com.catgal.common.domain.vo.SignVO;
 import com.catgal.server.service.ISignService;
+import com.catgal.server.mvc.annotation.LoginRequired;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,6 +22,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/sign")
 @RequiredArgsConstructor
+@LoginRequired
 public class SignController {
     private final ISignService signService;
 

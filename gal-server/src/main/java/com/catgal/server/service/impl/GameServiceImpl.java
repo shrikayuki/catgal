@@ -1,12 +1,16 @@
+/*
+ * 阅读说明
+ * 游戏列表、详情和随机作品的公共查询编排。
+ * 列表检索委托 GameSearchService，详情关联、统计和封面路径在业务层组装。
+ */
 package com.catgal.server.service.impl;
 
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.catgal.common.context.UserContext;
 import com.catgal.common.domain.dto.PageDTO;
 import com.catgal.common.domain.query.GamePageQuery;
 import com.catgal.common.domain.vo.GameVO;
+import com.catgal.common.exception.BusinessException;
 import com.catgal.common.utils.BeanUtils;
-import com.catgal.common.utils.CollUtils;
 import com.catgal.common.utils.StringUtils;
 import com.catgal.server.domain.po.FavoriteItem;
 import com.catgal.server.domain.po.Game;
@@ -15,16 +19,17 @@ import com.catgal.server.service.IFavoriteItemService;
 import com.catgal.server.service.IGameService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.catgal.server.service.IGameStatsService;
+import com.catgal.server.service.RedisCounterService;
 import com.catgal.server.task.GameIdsCacheTask;
+import com.catgal.server.search.GameListAssembler;
+import com.catgal.server.search.GameSearchService;
+import com.catgal.server.catalog.GameRelationsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.List;
 
-import static com.catgal.common.constants.RedisConstant.LOOK_COUNT_KEY;
+import static com.catgal.common.constants.RedisConstant.*;
 
 /**
  * <p>
@@ -40,59 +45,35 @@ import static com.catgal.common.constants.RedisConstant.LOOK_COUNT_KEY;
 public class GameServiceImpl extends ServiceImpl<GameMapper, Game> implements IGameService {
 
     private final IFavoriteItemService favoriteItemService;
-    private final StringRedisTemplate redisTemplate;
     private final IGameStatsService statsService;
+    private final RedisCounterService redisCounterService;
     private final GameIdsCacheTask gameIdsCacheTask;
+    private final GameSearchService gameSearchService;
+    private final GameListAssembler gameListAssembler;
+    private final GameRelationsService gameRelationsService;
 
 
     @Override
+    // 检索服务先决定 MySQL 或 ES，再批量补充游戏展示数据，避免控制器承担查询分支。
     public PageDTO<GameVO> pageGames(GamePageQuery query) {
-
-
-
-        Page<Game> page = lambdaQuery()
-                .eq(Game::getStatus, 1)
-                .like(StringUtils.isNotBlank(query.getName()), Game::getName, query.getName())
-                .apply(query.getReleaseYear() != null, "YEAR(release_date) = {0}", query.getReleaseYear())
-                // 直接传字符串
-                .apply(StringUtils.isNotBlank(query.getResourceType()),
-                        "FIND_IN_SET({0}, types)", query.getResourceType())
-                .apply(StringUtils.isNotBlank(query.getLanguage()),
-                        "FIND_IN_SET({0}, languages)", query.getLanguage())
-                .apply(StringUtils.isNotBlank(query.getPlatform()),
-                        "FIND_IN_SET({0}, platforms)", query.getPlatform())
-                // 关联表筛选
-                .apply(query.getTagId() != null,
-                        "EXISTS (SELECT 1 FROM game_tag WHERE game_id = id AND tag_id = {0})", query.getTagId())
-                .apply(query.getCompanyId() != null,
-                        "EXISTS (SELECT 1 FROM game_company WHERE game_id = id AND company_id = {0})", query.getCompanyId())
-                .page(query.toMpPage());
-        List<Game> records = page.getRecords();
-        if (CollUtils.isEmpty(records)){
-            return PageDTO.empty(page);
-        }
-
-        List<GameVO> vos = new ArrayList<>(records.size());
-        for (Game g : records) {
-            GameVO vo = getGameSimpleById(g.getId());
-            vo.setIsFavorite(null);
-            vos.add(vo);
-
-        }
-
-        return PageDTO.of(page, vos);
+        GameSearchService.GamePage page = gameSearchService.search(query);
+        long pages = (page.total() + query.getPageSize() - 1) / query.getPageSize();
+        return new PageDTO<>(page.total(), pages, gameListAssembler.assemble(page.games()));
     }
 
     @Override
+    // 验证游戏可见性后组装详情，浏览计数通过原子计数与标脏异步同步。
     public GameVO getGameById(Long id) {
         Long userId = UserContext.getUserId();
         //实现浏览人数缓存
-        String lookKey = StringUtils.format(LOOK_COUNT_KEY, id);
-        redisTemplate.opsForValue().increment(lookKey);
         Game game = getById(id);
+        if (game == null || !Integer.valueOf(1).equals(game.getStatus())) {
+            throw BusinessException.notFound("游戏不存在或未发布");
+        }
         GameVO vo = BeanUtils.copyBean(game, GameVO.class);
+        vo.setCoverUrl(com.catgal.server.storage.FileAccessPaths.gameCover(game));
         if (BeanUtils.isEmpty(vo)){
-            throw new RuntimeException("404");
+            throw BusinessException.notFound("游戏不存在");
         }
         FavoriteItem one = favoriteItemService.lambdaQuery().eq(FavoriteItem::getGameId, id).eq(FavoriteItem::getUserId, userId).one();
         boolean isMyFavorite = one != null;
@@ -121,19 +102,31 @@ public class GameServiceImpl extends ServiceImpl<GameMapper, Game> implements IG
         }
 
         vo.setRating(statsService.getRating(id));
-        //TODO 标签 会社待实现
+        String lookKey = StringUtils.format(LOOK_COUNT_KEY, id);
+        redisCounterService.changeAndMark(
+                lookKey,
+                game.getViewCount() == null ? 0L : game.getViewCount(),
+                1L,
+                GAME_STATS_COUNT_CHANGE_SET_KEY,
+                id
+        );
+        gameRelationsService.attach(java.util.List.of(vo));
 
         return vo;
     }
     @Override
+    // 为评论、评价和资源列表提供基础游戏信息，避免重复构造完整详情。
     public GameVO getGameSimpleById(Long id) {
         Long userId = UserContext.getUserId();
         FavoriteItem one = favoriteItemService.lambdaQuery().eq(FavoriteItem::getGameId, id).eq(FavoriteItem::getUserId, userId).one();
         Game game = getById(id);
+        if (game == null || !Integer.valueOf(1).equals(game.getStatus())) {
+            throw BusinessException.notFound("游戏不存在或未发布");
+        }
         GameVO vo = new GameVO();
         vo.setId(game.getId());
         vo.setName(game.getName());
-        vo.setCoverUrl(game.getCoverUrl());
+        vo.setCoverUrl(com.catgal.server.storage.FileAccessPaths.gameCover(game));
         //统计数
         vo.setCommentCount(statsService.getGameCommentCount(id));
 
@@ -142,17 +135,22 @@ public class GameServiceImpl extends ServiceImpl<GameMapper, Game> implements IG
             vo.setDownloadCount(gameDownLoadCount);
         }
         vo.setResourceCount(null);
-        vo.setFavoriteCount(statsService.getGameFavoriteCount(id));
+        Integer gameFavoriteCount = statsService.getGameFavoriteCount(id);
+        if (gameFavoriteCount != -1) {
+            vo.setFavoriteCount(gameFavoriteCount);
+        }
         vo.setViewCount(statsService.getGameLookCount(id));
         vo.setRating(statsService.getRating(id));
 
         vo.setResourceTypes(game.getTypeList());
         boolean isMyFavorite = one != null;
         vo.setIsFavorite(isMyFavorite);
+        gameRelationsService.attach(java.util.List.of(vo));
         return vo;
     }
 
     @Override
+    // 从已发布候选集合抽取后仍核对当前游戏，缓存是派生数据，状态以数据库为准。
     public GameVO getRandomGame() {
         return getGameById(gameIdsCacheTask.getRandomGameId());
     }

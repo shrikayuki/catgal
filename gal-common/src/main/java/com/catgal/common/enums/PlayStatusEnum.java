@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 评价中的游玩进度枚举，fromCode 和 isValid 供输入校验使用。
+ */
 package com.catgal.common.enums;
 
 import com.baomidou.mybatisplus.annotation.EnumValue;

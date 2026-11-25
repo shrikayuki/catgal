@@ -1,17 +1,18 @@
+/*
+ * 阅读说明
+ * 初始化公开游戏候选 ID 缓存并为随机游戏入口抽取候选。
+ */
 package com.catgal.server.task;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.catgal.server.domain.po.Game;
-import com.catgal.server.mapper.GameMapper;
+import com.catgal.common.exception.BusinessException;
+import com.catgal.server.catalog.GamePublicationCache;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 
 import static com.catgal.common.constants.RedisConstant.GAME_IDS_KEY;
 
@@ -20,7 +21,7 @@ import static com.catgal.common.constants.RedisConstant.GAME_IDS_KEY;
 @RequiredArgsConstructor
 public class GameIdsCacheTask {
 
-    private final GameMapper gameMapper;
+    private final GamePublicationCache publicationCache;
     private final StringRedisTemplate redisTemplate;
 
 
@@ -29,27 +30,11 @@ public class GameIdsCacheTask {
         // 异步加载，不阻塞启动
         CompletableFuture.runAsync(() -> {
             try {
-                // 1. 查询所有游戏ID
-                List<Long> ids = gameMapper.selectList(
-                        new LambdaQueryWrapper<Game>()
-                                .eq(Game::getStatus, 1)
-                                .select(Game::getId)
-                ).stream().map(Game::getId).collect(Collectors.toList());
-
-                if (ids.isEmpty()) {
-                    log.warn("没有已发布的游戏");
-                    return;
-                }
-
-                // 2. 批量添加到 Redis
-                String[] idArray = ids.stream()
-                        .map(String::valueOf)
-                        .toArray(String[]::new);
-                redisTemplate.opsForSet().add(GAME_IDS_KEY, idArray);
-
-                log.info("游戏ID缓存加载完成，共 {} 条", ids.size());
-            } catch (Exception e) {
-                log.error("游戏ID缓存加载失败", e);
+                // Versioned, batched initialization also removes unpublished IDs left by earlier runs.
+                publicationCache.initialize();
+                log.info("游戏发布状态缓存初始化完成");
+            } catch (RuntimeException exception) {
+                log.warn("游戏发布状态缓存初始化待后台补偿, failureType={}", exception.getClass().getSimpleName());
             }
         });
     }
@@ -59,6 +44,7 @@ public class GameIdsCacheTask {
      */
     public Long getRandomGameId() {
         String randomId = redisTemplate.opsForSet().randomMember(GAME_IDS_KEY);
+        if (randomId == null) throw BusinessException.notFound("暂无已发布游戏");
         return Long.parseLong(randomId);
     }
 }

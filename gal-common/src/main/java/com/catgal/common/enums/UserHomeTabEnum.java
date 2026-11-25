@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 用户主页 tab 编码目录，策略注册表据此定位查询实现。
+ */
 package com.catgal.common.enums;
 
 import com.fasterxml.jackson.annotation.JsonValue;

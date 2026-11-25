@@ -1,0 +1,8 @@
+FROM eclipse-temurin:17-jre-jammy
+RUN groupadd --gid 10001 catgal && useradd --uid 10001 --gid catgal --no-create-home catgal
+WORKDIR /app
+COPY --chown=catgal:catgal deploy/linux/artifacts/java/app.jar app.jar
+COPY --chown=catgal:catgal deploy/linux/artifacts/java/health/ /opt/health/
+USER catgal
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]

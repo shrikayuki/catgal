@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 密码 BCrypt 编码与校验入口，注册和登录复用同一算法。
+ */
 package com.catgal.common.utils;
 
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;

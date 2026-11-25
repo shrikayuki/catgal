@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 交换机、队列和路由键目录。
+ * 生产者的 exchange/routingKey 必须匹配配置类中的绑定关系。
+ */
 package com.catgal.common.constants;
 
 public interface MqConstants {

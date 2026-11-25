@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 当前 Java 请求的线程内身份上下文。
+ * 拦截器认证后写入，完成请求后清理，异步线程需要显式传递所需身份。
+ */
 package com.catgal.common.context;
 
 import lombok.Data;

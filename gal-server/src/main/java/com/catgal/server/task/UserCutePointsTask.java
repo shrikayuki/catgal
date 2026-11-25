@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 触发用户积分缓存的批量落库与任务确认。
+ */
 package com.catgal.server.task;
 
 import com.catgal.common.constants.RedisConstant;

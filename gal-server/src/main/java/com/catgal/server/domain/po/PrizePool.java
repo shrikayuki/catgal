@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 月度奖池的数据库映射对象，对应 prize_pool 表。
+ * MyBatis-Plus 通过字段与映射注解读写记录，Controller 使用专用视图承载展示字段。
+ */
 package com.catgal.server.domain.po;
 
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -70,6 +75,10 @@ public class PrizePool implements Serializable {
      * 1-启用 0-停用
      */
     private Integer status;
+
+    /** 抽奖扣库存和管理员编辑共用版本，表单回传以发现库存已发生变化。 */
+    @com.fasterxml.jackson.databind.annotation.JsonSerialize(using = com.fasterxml.jackson.databind.ser.std.ToStringSerializer.class)
+    private Long revision;
 
     private LocalDateTime createTime;
 

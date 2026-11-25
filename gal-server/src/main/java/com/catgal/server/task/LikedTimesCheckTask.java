@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 触发点赞数量校准通知，具体消息发送与完整性验证由点赞服务处理。
+ */
 package com.catgal.server.task;
 
 import com.catgal.server.service.ILikeRecordService;
@@ -23,7 +27,12 @@ public class LikedTimesCheckTask {
     public void checkLikedTimes(){
         log.info("点赞数同步定时任务开启");
         for (String bizType : BIZ_TYPES) {
-            recordService.readLikedTimesAndSendMessage(bizType,MAX_BIZ_SIZE);
+            try {
+                recordService.readLikedTimesAndSendMessage(bizType, MAX_BIZ_SIZE);
+            } catch (RuntimeException failure) {
+                // 单个业务类型有积压或发布失败时，处理器保留该批任务，其他类型仍继续本轮同步。
+                log.warn("点赞计数同步批次失败, bizType={}", bizType, failure);
+            }
         }
         log.info("点赞数定时任务结束");
     }

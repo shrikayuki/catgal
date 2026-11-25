@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 注册、登录、本人资料和用户主页的业务入口。
+ * 密码通过 BCrypt 处理，登录检查有效账号状态，主页 tab 由查询策略分发。
+ */
 package com.catgal.server.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -8,26 +13,24 @@ import com.catgal.common.context.UserContext;
 import com.catgal.common.domain.dto.*;
 import com.catgal.common.domain.query.UserHomeQueryDTO;
 import com.catgal.common.domain.vo.*;
+import com.catgal.common.exception.BusinessException;
 import com.catgal.common.utils.*;
 import com.catgal.server.domain.po.*;
-import com.catgal.server.mapper.GameMapper;
+import com.catgal.server.mapper.CommentMapper;
 import com.catgal.server.mapper.UserMapper;
+import com.catgal.server.security.CurrentUserProvider;
 import com.catgal.server.service.*;
+import com.catgal.server.service.userhome.UserHomeTabQueryRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import static com.catgal.common.constants.UserRoleConstant.USER;
-import static com.catgal.common.domain.query.UserHomeQueryDTO.*;
 
 @Slf4j
 @Service
@@ -38,23 +41,28 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     private final IGameReviewService reviewService;
     private final IFavoriteFolderService favoriteFolderService;
     private final IResourceService resourceService;
-    private final GameMapper gameMapper;
     private final IUserCutePointsService userCutePointsService;
-    private final IUserCutePointsService userCutePointsUserService;
 
-    private final AliOssUtil aliOssUtil;
+    private final IStorageFileService storageFileService;
+    private final JwtUtils jwtUtils;
+    private final IUserAccountStatusService accountStatusService;
+
+    private final IFollowRecordService followService;
+    private final CurrentUserProvider currentUserProvider;
+    private final UserHomeTabQueryRegistry userHomeTabQueryRegistry;
 
 
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    // 注册先校验身份字段与重复账号，再编码密码，显式赋予初始普通角色和正常状态。
     public void register(RegisterDTO dto) {
         // 1. 检查用户名是否已存在
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(User::getUsername, dto.getUsername());
         Long count = baseMapper.selectCount(wrapper);
         if (count > 0) {
-            throw new RuntimeException("用户名已存在");
+            throw BusinessException.conflict("用户名已存在");
         }
 
         // 2. 创建新用户
@@ -64,6 +72,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         user.setPhone(dto.getPhone());
         user.setSignature(dto.getSignature());
         user.setRole(0);
+        user.setStatus(1);
         user.setCreateTime(LocalDateTime.now());
         user.setUpdateTime(LocalDateTime.now());
 
@@ -73,6 +82,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
     }
 
     @Override
+    // 先校验账号密码，再检查当前封禁状态，成功后签发 JWT 并组装登录响应。
     public LoginVO login(LoginDTO dto) {
         // 1. 查询用户
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
@@ -80,41 +90,50 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         User user = baseMapper.selectOne(wrapper);
 
         if (user == null) {
-            throw new RuntimeException("用户不存在");
+            throw BusinessException.unauthorized("用户不存在");
         }
 
         // 2. 验证密码
         if (!PasswordUtils.matches(dto.getPassword(), user.getPassword())) {
-            throw new RuntimeException("密码错误");
+            throw BusinessException.unauthorized("密码错误");
         }
 
+        // 密码验证后检查封禁，避免在验证密码前泄露账号状态。
+        accountStatusService.requireActive(user);
+
         // 3. 生成 Token
-        String token = JwtUtils.generateToken(user.getId(), user.getUsername());
+        String token = jwtUtils.generateToken(user.getId(), user.getUsername(), user.getRole(), user.getAuthVersion());
 
         // 4. 返回结果
         log.info("用户登录成功: {}", dto.getUsername());
-        return new LoginVO(user.getId(), user.getUsername(), user.getRole(), token);
+        return new LoginVO(user.getId(), user.getUsername(), user.getRole(), token,
+                com.catgal.server.storage.FileAccessPaths.avatar(user));
     }
 
     @Override
+    // 主页公共信息与 tab 分页分开组装，查询策略负责对应业务的公开范围。
     public UserHomeVO getUserHomeById(UserHomeQueryDTO dto) {
-        boolean isMyself = dto.getUserId() == null;
-        Long myId = UserContext.getUserId();
-        Long userId = null;
-        if (isMyself && myId==null) {
-            log.error("userId:{}",myId);
-            throw new RuntimeException("用户不存在");
+        boolean selfRequested = dto.getUserId() == null;
+        Long currentUserId = currentUserProvider.getOptionalUserId();
+        if (selfRequested && currentUserId == null) {
+            throw BusinessException.unauthorized("用户未登录");
         }
 
-        userId = isMyself ? myId : dto.getUserId();
+        Long userId = selfRequested ? currentUserId : dto.getUserId();
+        boolean ownProfile = currentUserId != null && Objects.equals(currentUserId, userId);
         User user = getById(userId);
+        if (user == null) {
+            throw BusinessException.notFound("用户不存在");
+        }
         UserHomeVO vo = BeanUtils.copyProperties(user, UserHomeVO.class);
+        vo.setAvatarUrl(com.catgal.server.storage.FileAccessPaths.avatar(user));
         vo.setUserId(userId);
 
 
-        // 评论数量
+        // 访客计数与评论标签页共用公开口径，本人保留自己的全部历史。
         Long commentCount = commentService.lambdaQuery()
                 .eq(Comment::getUserId, userId)
+                .apply(!ownProfile, CommentMapper.VISIBLE_ON_PUBLIC_PROFILE)
                 .count();
         vo.setCommentCount(commentCount.intValue());
 
@@ -135,17 +154,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                 .eq(Resource::getUserId, userId)
                 .count();
         vo.setResourceCount(resourceCount.intValue());
-        vo.setCutePoints(0);
-        vo.setFollowerCount(0);
-        vo.setFollowingCount(0);
-        if (!isMyself) {
-            vo.setIsFollowing(false);
+
+        vo.setFollowerCount(followService.userFansCount(userId));
+        vo.setFollowingCount(followService.userFollowCount(userId));
+        if (!ownProfile && currentUserId != null) {
+            vo.setIsFollowing(followService.isMyFollow(currentUserId, userId));
         }
 
-        if (isMyself && Objects.equals(user.getRole(), USER)) {
+        if (ownProfile && Objects.equals(user.getRole(), USER)) {
             vo.setShowApplyCreator(true);
         }
-        // TODO 关注 功能待实现 默认0 false 评论数量 收藏数量 评价数量 发布资源数量
+
         Integer userCutePointsCache = userCutePointsService.getUserCutePointsCache(userId);
         if (userCutePointsCache != null) {
             vo.setCutePoints(userCutePointsCache);
@@ -156,38 +175,37 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             return vo;
         }
 
-        PageDTO<?> page = getPageByType(dto, userId);
+        PageDTO<?> page = userHomeTabQueryRegistry.query(dto, userId, ownProfile);
         vo.setPageData(page);
         return vo;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    // 当前用户身份由认证上下文读取，先验证本人权限再保存允许修改的资料字段。
     public void updateProfile(Long id, UserUpdateDTO dto) {
+        Long currentUserId = currentUserProvider.requireSelf(id);
 
-        if (id == null) {
-            throw new RuntimeException("未登录");
-        }
-
-        // 2. 查询用户是否存在
-        User user = getById(id);
+        boolean changingPassword = StringUtils.isNotBlank(dto.getNewPassword());
+        // 改密码时先锁用户再验旧密码和认证版本，拒绝已经进入请求队列的旧凭据。
+        User user = changingPassword ? baseMapper.selectForUpdate(currentUserId) : getById(currentUserId);
         if (user == null) {
-            throw new RuntimeException("用户不存在");
+            throw BusinessException.notFound("用户不存在");
         }
 
         // 3. 更新对象
         User updateUser = new User();
-        updateUser.setId(id);
+        updateUser.setId(currentUserId);
 
         // 4. 修改用户名（需检查唯一性）
         if (StringUtils.isNotBlank(dto.getUsername())) {
             // 检查用户名是否已被其他用户使用
             LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
             wrapper.eq(User::getUsername, dto.getUsername())
-                    .ne(User::getId, id);
+                    .ne(User::getId, currentUserId);
             Long count = baseMapper.selectCount(wrapper);
             if (count > 0) {
-                throw new RuntimeException("用户名已存在");
+                throw BusinessException.conflict("用户名已存在");
             }
             updateUser.setUsername(dto.getUsername());
         }
@@ -198,236 +216,49 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         }
 
         // 7. 修改密码（需要验证原密码）
-        if (StringUtils.isNotBlank(dto.getNewPassword())) {
+        if (changingPassword) {
+            accountStatusService.requireActive(user);
+            if (!Objects.equals(UserContext.getUser().getAuthVersion(), user.getAuthVersion())) {
+                throw BusinessException.unauthorized("登录凭证已失效，请重新登录");
+            }
             // 验证原密码
             if (StringUtils.isBlank(dto.getOldPassword())) {
-                throw new RuntimeException("请输入原密码");
+                throw BusinessException.badRequest("请输入原密码");
             }
             if (!PasswordUtils.matches(dto.getOldPassword(), user.getPassword())) {
-                throw new RuntimeException("原密码错误");
+                throw BusinessException.badRequest("原密码错误");
             }
             // 新密码加密
             updateUser.setPassword(PasswordUtils.encode(dto.getNewPassword()));
+            // 版本和口令散列由同一次 UPDATE 写入，失败时共同回滚。
+            updateUser.setAuthVersion(Math.incrementExact(user.getAuthVersion()));
         }
 
         // 8. 执行更新
         boolean success = updateById(updateUser);
         if (!success) {
-            throw new RuntimeException("修改失败");
+            throw BusinessException.internalError("修改失败");
         }
 
-        log.info("用户信息修改成功: userId={}", id);
+        log.info("用户信息修改成功: userId={}", currentUserId);
     }
 
     @Override
     public Integer getMyPoints() {
-        Long userId = UserContext.getUserId();
-        return userCutePointsUserService.getUserCutePointsCache(userId);
+        return getMyPoints(false);
+    }
+
+    @Override
+    public Integer getMyPoints(boolean fresh) {
+        Long userId = currentUserProvider.requireUserId();
+        return fresh ? userCutePointsService.getUserCutePointsCache(userId, true)
+                : userCutePointsService.getUserCutePointsCache(userId);
 
     }
 
     @Override
+    // 头像上传委托托管文件服务，文件元数据和用户引用由专用存储事务维护。
     public String updateAvatar(MultipartFile file) {
-        Long userId = UserContext.getUserId();
-        if (userId == null) {
-            throw new RuntimeException("用户未登录");
-        }
-
-        try {
-            // 1. 校验文件
-            if (file.isEmpty()) {
-                throw new RuntimeException("文件不能为空");
-            }
-
-            String originalFilename = file.getOriginalFilename();
-            if (originalFilename == null || originalFilename.isEmpty()) {
-                throw new RuntimeException("文件名不能为空");
-            }
-            log.info(originalFilename);
-            String ext = originalFilename.substring(originalFilename.lastIndexOf("."));
-
-            // 2. 校验文件类型
-            List<String> allowedTypes = Arrays.asList(".jpg", ".jpeg", ".png", ".gif", ".webp");
-            if (!allowedTypes.contains(ext.toLowerCase())) {
-                throw new RuntimeException("只支持 JPG、PNG、GIF、WEBP 格式");
-            }
-
-            // 3. 校验文件大小（2MB）
-            if (file.getSize() > 2 * 1024 * 1024) {
-                throw new RuntimeException("图片大小不能超过 2MB");
-            }
-
-            // 4. 上传到 OSS
-            String objectName = "avatars/" +
-                    userId +
-                    "_" +
-                    System.currentTimeMillis() +
-                    ext;
-            String url = aliOssUtil.upload(file.getBytes(), objectName);
-
-            // 5. 更新数据库
-            LambdaUpdateWrapper<User> wrapper = new LambdaUpdateWrapper<>();
-            wrapper.eq(User::getId, userId)
-                    .set(User::getAvatarUrl, url);
-            update(wrapper);
-
-            log.info("头像上传成功: userId={}, url={}", userId, url);
-            return url;
-
-        } catch (IOException e) {
-            log.error("上传头像失败", e);
-            throw new RuntimeException("上传失败");
-        }
-    }
-
-
-    private PageDTO<?> getPageByType(UserHomeQueryDTO dto, Long userId) {
-        Integer tab = dto.getTab();
-        if (Objects.equals(tab, COMMENT)) {
-            return getCommentPage(dto, userId);
-        } else if (Objects.equals(tab, REVIEW)) {
-            return getReviewPage(dto, userId);
-        } else if (Objects.equals(tab, FAVORITE)) {
-            return getFavoritePage(dto, userId);
-        } else {
-            return getResourcePage(dto, userId);
-        }
-    }
-
-    /**
-     * 评论分页
-     */
-    private PageDTO<UserCommentVO> getCommentPage(UserHomeQueryDTO dto, Long userId) {
-        Page<Comment> page = commentService.lambdaQuery()
-                .eq(Comment::getUserId, userId)
-                .page(dto.toMpPageDefaultSortByCreateTimeDesc());
-
-        List<Comment> records = page.getRecords();
-        if (CollUtils.isEmpty(records)) {
-            return PageDTO.empty(page);
-        }
-
-        // 批量查询游戏
-        Map<Long, String> gameNameMap = getGameNameMap(records.stream()
-                .map(Comment::getGameId).collect(Collectors.toSet()));
-
-        List<UserCommentVO> vos = records.stream()
-                .map(comment -> {
-                    UserCommentVO vo = BeanUtils.copyProperties(comment, UserCommentVO.class);
-                    vo.setGameName(gameNameMap.getOrDefault(comment.getGameId(), ""));
-                    return vo;
-                })
-                .collect(Collectors.toList());
-
-        return PageDTO.of(page, vos);
-    }
-
-    /**
-     * 评价分页
-     */
-    private PageDTO<UserReviewVO> getReviewPage(UserHomeQueryDTO dto, Long userId) {
-        Page<GameReview> page = reviewService.lambdaQuery()
-                .eq(GameReview::getUserId, userId)
-                .page(dto.toMpPageDefaultSortByCreateTimeDesc());
-
-        List<GameReview> records = page.getRecords();
-        if (CollUtils.isEmpty(records)) {
-            return PageDTO.empty(page);
-        }
-
-        // 批量查询游戏
-        Map<Long, String> gameNameMap = getGameNameMap(records.stream()
-                .map(GameReview::getGameId).collect(Collectors.toSet()));
-
-        List<UserReviewVO> vos = records.stream()
-                .map(r -> {
-                    UserReviewVO vo = BeanUtils.copyProperties(r, UserReviewVO.class);
-                    vo.setGameName(gameNameMap.getOrDefault(r.getGameId(), ""));
-                    return vo;
-                })
-                .collect(Collectors.toList());
-
-        return PageDTO.of(page, vos);
-    }
-
-    /**
-     * 收藏夹分页
-     */
-    private PageDTO<UserFavoriteFolderVO> getFavoritePage(UserHomeQueryDTO dto, Long userId) {
-        Page<FavoriteFolder> page = favoriteFolderService.lambdaQuery()
-                .eq(FavoriteFolder::getUserId, userId)
-                .page(dto.toMpPageDefaultSortByCreateTimeDesc());
-
-        List<FavoriteFolder> records = page.getRecords();
-        if (CollUtils.isEmpty(records)) {
-            return PageDTO.empty(page);
-        }
-
-        List<UserFavoriteFolderVO> vos = records.stream()
-                .map(f -> {
-                    UserFavoriteFolderVO vo = BeanUtils.copyProperties(f, UserFavoriteFolderVO.class);
-                    Long id = vo.getId();
-                    Integer gameCount = favoriteFolderService.getGameCountFromfolder(id);
-                    if (gameCount != -1) vo.setGameCount(gameCount);
-                    return vo;
-                })
-                .collect(Collectors.toList());
-
-        return PageDTO.of(page, vos);
-    }
-
-    /**
-     * 资源分页
-     */
-    private PageDTO<UserResourceVO> getResourcePage(UserHomeQueryDTO dto, Long userId) {
-        Page<Resource> page = resourceService.lambdaQuery()
-                .eq(Resource::getUserId, userId)
-                .page(dto.toMpPageDefaultSortByCreateTimeDesc());
-
-        List<Resource> records = page.getRecords();
-        if (CollUtils.isEmpty(records)) {
-            return PageDTO.empty(page);
-        }
-
-        // 批量查询游戏
-        Set<Long> gameIds = records.stream().map(Resource::getGameId).collect(Collectors.toSet());
-        Map<Long, Game> gameMap = getGameMap(gameIds);
-
-        List<UserResourceVO> vos = records.stream()
-                .map(r -> {
-                    UserResourceVO vo = new UserResourceVO();
-                    BeanUtils.copyProperties(r, vo);
-                    vo.setTypes(r.getTypeList());
-                    vo.setLanguages(r.getLanguageList());
-                    vo.setPlatforms(r.getPlatformList());
-
-                    Game game = gameMap.get(r.getGameId());
-                    if (game != null) {
-                        vo.setGameName(game.getName());
-                        vo.setCoverUrl(game.getCoverUrl());
-                    }
-                    return vo;
-                })
-                .collect(Collectors.toList());
-
-        return PageDTO.of(page, vos);
-    }
-
-// ========== 辅助方法 ==========
-
-    private Map<Long, String> getGameNameMap(Set<Long> gameIds) {
-        if (CollUtils.isEmpty(gameIds)) {
-            return new HashMap<>();
-        }
-        List<Game> games = gameMapper.selectBatchIds(gameIds);
-        return games.stream().collect(Collectors.toMap(Game::getId, Game::getName, (v1, v2) -> v1));
-    }
-
-    private Map<Long, Game> getGameMap(Set<Long> gameIds) {
-        if (CollUtils.isEmpty(gameIds)) {
-            return new HashMap<>();
-        }
-        List<Game> games = gameMapper.selectBatchIds(gameIds);
-        return games.stream().collect(Collectors.toMap(Game::getId, Function.identity(), (v1, v2) -> v1));
+        return storageFileService.updateAvatar(file);
     }
 }

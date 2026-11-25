@@ -33,3 +33,33 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Local environment ###
+.env
+.env.*
+!.env.example
+
+### Frontend dependencies and build output ###
+node_modules/
+frontend/dist/
+
+### Python AI service ###
+ai-service/.venv/
+ai-service/.pytest_cache/
+ai-service/.ruff_cache/
+ai-service/**/__pycache__/
+ai-service/**/*.py[cod]
+
+### Local development documentation ###
+/AGENTS.md
+/docs/
+/prompts/
+/frontend/README.md
+
+### Linux deployment credentials ###
+/deploy/linux/secrets/
+/deploy/linux/artifacts/
+/deploy/minio/secrets/
+/deploy/**/__pycache__/
+/%ProgramData%/
+/%SystemDrive%/

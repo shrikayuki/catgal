@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 收藏异步通知协议，携带用户、收藏夹和游戏定位信息。
+ * 消费者根据当前关系校准，消息中的旧操作顺序由业务同步逻辑吸收。
+ */
 package Message;
 
 import io.swagger.v3.oas.annotations.media.Schema;

@@ -21,6 +21,24 @@
     </properties>
 
     <dependencies>
+        <!-- S3 authentication, streaming and object operations for the managed MinIO backend. -->
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+            <version>9.0.4</version>
+        </dependency>
+        <!-- OkHttp 5 publishes its Java implementation as a separate Maven artifact. -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp-jvm</artifactId>
+            <version>${okhttp.version}</version>
+        </dependency>
+        <!-- Preserve existing WebP avatar support with an actual image decoder. -->
+        <dependency>
+            <groupId>com.twelvemonkeys.imageio</groupId>
+            <artifactId>imageio-webp</artifactId>
+            <version>3.15.3</version>
+        </dependency>
         <!-- 依赖 common 和 pojo 模块 -->
         <dependency>
             <groupId>com.gal</groupId>
@@ -42,41 +60,21 @@
             <artifactId>caffeine</artifactId>
         </dependency>
 
-        <!-- ========== Spring AI Alibaba 核心依赖 ========== -->
-        <!-- 基础聊天能力（通义千问） -->
+        <!-- 数据库版本迁移：默认关闭，通过 FLYWAY_ENABLED 显式启用 -->
         <dependency>
-            <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
         </dependency>
 
-        <!-- 多智能体/工作流（用于多角色系统） -->
-        <dependency>
-            <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-graph-core</artifactId>
-        </dependency>
-
-        <!-- 会话记忆 -->
-        <!-- ⭐ Redis 短期记忆（替换 spring-ai-alibaba-starter-memory） -->
-        <dependency>
-            <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-starter-memory-redis</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-        </dependency>
+        <!-- Python AI 服务使用 WebClient 流式转发，MVC 仍是主 Web 栈。 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-test</artifactId>
+            <artifactId>spring-boot-starter-webflux</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.testng</groupId>
-            <artifactId>testng</artifactId>
-            <version>RELEASE</version>
-            <scope>compile</scope>
-        </dependency>
-
-
     </dependencies>
 
 

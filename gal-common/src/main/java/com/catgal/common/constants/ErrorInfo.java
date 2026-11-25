@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 统一错误码与错误文本目录，供全局异常响应使用。
+ * HTTP 状态与业务码分别表达传输结果和具体业务失败原因。
+ */
 package com.catgal.common.constants;
 
 public interface ErrorInfo {
@@ -27,5 +32,13 @@ public interface ErrorInfo {
     interface Code {
         int SUCCESS = 200;
         int FAILED = 0;
+        int BAD_REQUEST = 400;
+        int UNAUTHORIZED = 401;
+        int FORBIDDEN = 403;
+        // HTTP 仍使用 403，独立业务码让客户端仅对账号封禁清理会话。
+        int ACCOUNT_BANNED = 40301;
+        int NOT_FOUND = 404;
+        int CONFLICT = 409;
+        int SERVER_ERROR = 500;
     }
 }

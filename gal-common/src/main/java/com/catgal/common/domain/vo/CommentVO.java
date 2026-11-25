@@ -1,9 +1,16 @@
+/*
+ * 阅读说明
+ * 评论信息VO的响应视图。
+ * 业务服务将数据库记录及关联信息装配为此类型，再由 Controller 放入统一响应。
+ */
 package com.catgal.common.domain.vo;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Schema(description = "评论信息VO")
@@ -44,4 +51,13 @@ public class CommentVO {
 
     @Schema(description = "是否被当前用户点赞", example = "false")
     private Boolean isLike;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String replyUsername;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Long replyCount;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private List<CommentVO> replyPreview;
 }

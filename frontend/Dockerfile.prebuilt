@@ -1,0 +1,6 @@
+FROM nginx:stable-alpine
+COPY deploy/linux/nginx.conf /etc/nginx/nginx.conf
+COPY frontend/nginx/ai-proxy.conf /etc/nginx/ai-proxy.conf
+COPY deploy/linux/artifacts/web/ /usr/share/nginx/html/
+RUN chmod -R a+rX /usr/share/nginx/html
+EXPOSE 80

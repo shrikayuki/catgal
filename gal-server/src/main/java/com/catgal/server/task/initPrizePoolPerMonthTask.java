@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 每月初始化当期奖池缓存，库存同步仍由单独任务处理。
+ */
 package com.catgal.server.task;
 
 import cn.hutool.json.JSONUtil;

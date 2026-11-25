@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.catgal.server.mapper.PrizePoolMapper">
+    <!-- PrizePoolMapper 的复杂 SQL 映射，namespace 与 Java Mapper 全限定名对应。 -->
 
+    <!-- 有限库存条件更新，remain_stock > 0 与扣减同一条 SQL，影响行数用于判断是否成功。 -->
     <update id="decrementPrizeStock">
         UPDATE prize_pool
         SET remain_stock = remain_stock - 1
@@ -10,6 +12,7 @@
             AND remain_stock > 0
     </update>
 
+    <!-- 把已验证的 Redis 库存快照批量落库，WHERE 只覆盖传入的奖品 ID。 -->
     <update id="batchUpdateRemainStock" parameterType="list">
         UPDATE prize_pool
         SET remain_stock = CASE id

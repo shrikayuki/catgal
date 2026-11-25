@@ -1,3 +1,9 @@
+/*
+ * 阅读说明
+ * 创建收藏夹、删除收藏夹、根据id查看收藏夹下的游戏的 HTTP 入口。
+ * 路由前缀 /folder，请求绑定后委托 IFavoriteFolderService。
+ * LoginRequired 标记的入口要求登录，上下文用户身份来自服务端认证。
+ */
 package com.catgal.server.controller;
 
 
@@ -7,6 +13,7 @@ import com.catgal.common.domain.dto.PageDTO;
 import com.catgal.common.domain.query.PageQuery;
 import com.catgal.common.domain.vo.FolderGameVO;
 import com.catgal.server.service.IFavoriteFolderService;
+import com.catgal.server.mvc.annotation.LoginRequired;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -32,6 +39,7 @@ public class FavoriteFolderController {
     private final IFavoriteFolderService folderService;
 
     @PostMapping
+    @LoginRequired
     @Operation(summary = "创建收藏夹")
     public R<Void> createFolder(@Valid @RequestBody CreateFolderDTO dto) {
         folderService.createFolder(dto);
@@ -39,6 +47,7 @@ public class FavoriteFolderController {
     }
 
     @DeleteMapping("/{id}")
+    @LoginRequired
     @Operation(summary = "删除收藏夹")
     public R<Void> deleteFolder(@PathVariable Long id) {
         folderService.deleteFolder(id);

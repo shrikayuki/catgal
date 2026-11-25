@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 触发点赞关系定时落库，类型与批次决定本次任务范围。
+ */
 package com.catgal.server.task;
 
 import com.catgal.server.service.ILikeRecordService;

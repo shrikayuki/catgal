@@ -1,28 +1,44 @@
+/*
+ * 阅读说明
+ * 生成、校验和解析签名 JWT，密钥与有效期从外部配置注入。
+ * Token 声明反映签发时身份，实时角色和封禁状态由 LoginInterceptor 回库检查。
+ */
 package com.catgal.common.utils;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import static com.catgal.common.constants.JwtClaimsConstant.*;
 
 @Component
 public class JwtUtils {
 
-    // 固定密钥（算法自动生成符合标准）
-    private static final SecretKey SECRET_KEY = Keys.secretKeyFor(io.jsonwebtoken.SignatureAlgorithm.HS256);
-    private static final long EXPIRE = 604800000L; // 7天
+    private final SecretKey secretKey;
+    private final long expire;
+
+    public JwtUtils(@Value("${security.jwt.secret}") String base64Secret,
+                    @Value("${security.jwt.expire-ms:604800000}") long expire) {
+        if (base64Secret == null || base64Secret.isBlank()) {
+            throw new IllegalArgumentException("JWT secret must not be blank");
+        }
+        this.secretKey = Keys.hmacShaKeyFor(Decoders.BASE64.decode(base64Secret));
+        this.expire = expire;
+    }
 
     /**
      * 生成token（基础版，只有 userId 和 username）
      */
-    public static String generateToken(Long userId, String username) {
+    public String generateToken(Long userId, String username) {
         Map<String, Object> claims = new HashMap<>();
         claims.put(USER_ID, userId);
         claims.put(USERNAME, username);
@@ -31,15 +47,15 @@ public class JwtUtils {
                 .claims(claims)
                 .subject(username)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + EXPIRE))
-                .signWith(SECRET_KEY)
+                .expiration(new Date(System.currentTimeMillis() + expire))
+                .signWith(secretKey)
                 .compact();
     }
 
     /**
      * 生成token（完整版，包含 role）
      */
-    public static String generateToken(Long userId, String username, Integer role) {
+    public String generateToken(Long userId, String username, Integer role) {
         Map<String, Object> claims = new HashMap<>();
         claims.put(USER_ID, userId);
         claims.put(USERNAME, username);
@@ -49,18 +65,33 @@ public class JwtUtils {
                 .claims(claims)
                 .subject(username)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + EXPIRE))
-                .signWith(SECRET_KEY)
+                .expiration(new Date(System.currentTimeMillis() + expire))
+                .signWith(secretKey)
+                .compact();
+    }
+
+    /** 新登录携带账号版本。随机 jti 保证同秒登录两次也得到可分别撤销的凭据。 */
+    public String generateToken(Long userId, String username, Integer role, long authVersion) {
+        return Jwts.builder()
+                .claim(USER_ID, userId)
+                .claim(USERNAME, username)
+                .claim(ROLE, role)
+                .claim(AUTH_VERSION, authVersion)
+                .id(UUID.randomUUID().toString())
+                .subject(username)
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + expire))
+                .signWith(secretKey)
                 .compact();
     }
 
     /**
      * 解析token
      */
-    public static Claims parseToken(String token) {
+    public Claims parseToken(String token) {
         try {
             return Jwts.parser()
-                    .verifyWith(SECRET_KEY)
+                    .verifyWith(secretKey)
                     .build()
                     .parseSignedClaims(token)
                     .getPayload();
@@ -72,7 +103,8 @@ public class JwtUtils {
     /**
      * 验证token是否有效
      */
-    public static boolean validateToken(String token) {
+    // 解析时验证签名及有效期，失败返回校验结果，实时账号状态由认证拦截器另行读取。
+    public boolean validateToken(String token) {
         Claims claims = parseToken(token);
         return claims != null && claims.getExpiration().after(new Date());
     }
@@ -80,7 +112,7 @@ public class JwtUtils {
     /**
      * 从token获取用户ID
      */
-    public static Long getUserId(String token) {
+    public Long getUserId(String token) {
         Claims claims = parseToken(token);
         return claims == null ? null : claims.get(USER_ID, Long.class);
     }
@@ -88,7 +120,7 @@ public class JwtUtils {
     /**
      * 从token获取用户名
      */
-    public static String getUsername(String token) {
+    public String getUsername(String token) {
         Claims claims = parseToken(token);
         return claims == null ? null : claims.get(USERNAME, String.class);
     }
@@ -96,7 +128,7 @@ public class JwtUtils {
     /**
      * 从token获取用户角色
      */
-    public static Integer getRole(String token) {
+    public Integer getRole(String token) {
         Claims claims = parseToken(token);
         return claims == null ? null : claims.get(ROLE, Integer.class);
     }
@@ -104,7 +136,8 @@ public class JwtUtils {
     /**
      * 刷新token（重新计算过期时间）
      */
-    public static String refreshToken(String token) {
+    // 根据已校验 Token 构造新凭据，此能力的使用时机由业务入口决定。
+    public String refreshToken(String token) {
         if (!validateToken(token)) {
             return null;
         }

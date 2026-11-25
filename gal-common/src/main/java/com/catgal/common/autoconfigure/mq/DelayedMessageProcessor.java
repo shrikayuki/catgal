@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 将延迟参数写入 AMQP 消息属性，交给支持相应能力的 Broker 处理。
+ */
 package com.catgal.common.autoconfigure.mq;
 
 import org.springframework.amqp.AmqpException;

@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 积分消息路由使用的业务类型标识，需与 MQ 绑定和消费者对应。
+ */
 package com.catgal.common.constants;
 
 import javax.print.DocFlavor;

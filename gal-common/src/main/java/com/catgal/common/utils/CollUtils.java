@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 集合创建、判空与拼接等公共辅助函数，供批量查询和结果组装使用。
+ */
 package com.catgal.common.utils;
 
 import cn.hutool.core.collection.CollectionUtil;

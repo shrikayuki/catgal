@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 基于实例内 JDK BitSet 的简易布隆过滤器，用多个哈希位判断候选是否可能存在。
+ * 阳性结果仍可能误判，需要数据库等权威来源复核。
+ */
 package com.catgal.common.utils;
 
 import java.util.BitSet;

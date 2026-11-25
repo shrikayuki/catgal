@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 游戏标签的数据库映射对象，对应 tag 表。
+ * MyBatis-Plus 通过字段与映射注解读写记录，Controller 使用专用视图承载展示字段。
+ */
 package com.catgal.server.domain.po;
 
 import com.baomidou.mybatisplus.annotation.TableField;
@@ -43,6 +48,10 @@ public class Tag implements Serializable {
      */
     @TableField("create_time")
     private LocalDateTime createTime;
+
+    private LocalDateTime updateTime;
+
+    private Long revision = 0L;
 
 
 }

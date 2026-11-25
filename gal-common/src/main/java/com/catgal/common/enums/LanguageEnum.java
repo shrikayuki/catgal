@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 作品语言枚举，接口和持久化通过 code 交换，展示使用描述字段。
+ */
 package com.catgal.common.enums;
 
 import com.baomidou.mybatisplus.annotation.EnumValue;

@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 游戏评价与评分聚合，评价新增、删除及治理统一先锁游戏。
+ * 同事务重算可见评价平均分，公开计数通过 Redis 脏任务同步。
+ */
 package com.catgal.server.service.impl;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -6,22 +11,27 @@ import com.catgal.common.domain.dto.PageDTO;
 import com.catgal.common.domain.dto.ReviewAddDTO;
 import com.catgal.common.domain.query.GameQuery;
 import com.catgal.common.domain.vo.*;
+import com.catgal.common.exception.BusinessException;
 import com.catgal.common.utils.BeanUtils;
 import com.catgal.common.utils.CollUtils;
 import com.catgal.common.utils.StringUtils;
 import com.catgal.server.domain.po.Comment;
+import com.catgal.server.domain.po.Game;
 import com.catgal.server.domain.po.GameReview;
 import com.catgal.server.domain.po.User;
 import com.catgal.server.mapper.GameReviewMapper;
+import com.catgal.server.mapper.GameMapper;
 import com.catgal.server.mapper.UserMapper;
 import com.catgal.server.service.IGameReviewService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.catgal.server.service.IGameService;
 import com.catgal.server.service.ILikeRecordService;
+import com.catgal.server.service.IGameStatsService;
+import com.catgal.server.service.RedisCounterService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -45,13 +55,16 @@ public class GameReviewServiceImpl extends ServiceImpl<GameReviewMapper, GameRev
     private final UserMapper userMapper;
     private final IGameService gameService;
     private final ILikeRecordService likeService;
-    private final StringRedisTemplate redisTemplate;
+    private final GameMapper gameMapper;
+    private final IGameStatsService statsService;
+    private final RedisCounterService redisCounterService;
 
     @Override
+    // 只分页展示正常评价，评分、剧透和游玩进度字段与作者展示数据一起返回。
     public GameConnectVO<GameReviewVO> pageGameReview(GameQuery query) {
         Long gameId = query.getGameId();
         if (query.getGameId() == null) {
-            throw new RuntimeException("游戏Id不能为空");
+            throw BusinessException.badRequest("游戏Id不能为空");
         }
         GameVO gameInfo = gameService.getGameSimpleById(gameId);
         // 先转换基本对象
@@ -72,49 +85,72 @@ public class GameReviewServiceImpl extends ServiceImpl<GameReviewMapper, GameRev
     }
 
     @Override
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    // 事务内先锁游戏再保存评价，随后按当前可见评价重新聚合平均分和数量。
     public void addGameReview(ReviewAddDTO dto) {
         Long userId = UserContext.getUserId();
         Long gameId = dto.getGameId();
-        Integer score = dto.getScore();
-        if (userId == null || gameId == null) {
-            log.error("游戏id或用户id为空");
-            throw new RuntimeException("用户未登录或是游戏不存在");
+        if (userId == null) {
+            throw BusinessException.unauthorized("用户未登录");
         }
+        if (gameId == null) {
+            throw BusinessException.badRequest("游戏Id不能为空");
+        }
+        // All rating writers lock the game before changing its reviews.
+        Game game = gameMapper.selectForUpdate(gameId);
+        if (game == null || !Objects.equals(game.getStatus(), 1)) {
+            throw BusinessException.conflict("只能评价已发布游戏");
+        }
+        int initialCount = statsService.getGameReviewCount(gameId);
         GameReview gameReview = BeanUtils.copyProperties(dto, GameReview.class);
 
         gameReview.setUserId(userId);
+        gameReview.setStatus(1);
         boolean success = save(gameReview);
         if (!success) {
-            log.error("保存失败");
+            throw BusinessException.internalError("评价保存失败");
         }
-        redisTemplate.opsForValue().increment(StringUtils.format(REVIEW_COUNT_KEY, gameId));
-        redisTemplate.opsForSet().add(GAME_REVIEW_COUNT_CHANGE_SET_KEY, gameId.toString());
-        redisTemplate.opsForZSet().add(StringUtils.format(GAME_RATING_KEY, gameId), String.valueOf(gameReview.getId()), score);
+        gameMapper.refreshRating(gameId);
+        redisCounterService.changeAndMark(StringUtils.format(REVIEW_COUNT_KEY, gameId),
+                initialCount, 1L, GAME_STATS_COUNT_CHANGE_SET_KEY, gameId);
 
     }
 
     @Override
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    // 本人校验后按游戏、评价的顺序加锁，删除与评分重算在同一数据库事务提交。
     public void deleteGameReview(Long id) {
         Long userId = UserContext.getUserId();
-        GameReview review = getById(id);
+        GameReview review = baseMapper.selectById(id);
         if (review == null) {
             log.error("评价不存在");
-            throw new RuntimeException("该评价不存在或是被删除");
+            throw BusinessException.notFound("该评价不存在或是被删除");
         }
         if (!review.getUserId().equals(userId)) {
-            throw new RuntimeException("只能删除自己的评价");
+            throw BusinessException.forbidden("只能删除自己的评价");
         }
         Long gameId = review.getGameId();
+        if (gameMapper.selectForUpdate(gameId) == null) {
+            throw BusinessException.notFound("游戏不存在");
+        }
+        review = baseMapper.selectForUpdate(id);
+        if (review == null) {
+            throw BusinessException.notFound("评价不存在或是被删除");
+        }
+        int initialCount = statsService.getGameReviewCount(gameId);
         boolean success = removeById(review);
         if (!success) {
-            log.error("删除失败");
+            throw BusinessException.conflict("评价已发生变化，请刷新后重试");
         }
-        redisTemplate.opsForValue().increment(StringUtils.format(REVIEW_COUNT_KEY, gameId), -1);
-        redisTemplate.opsForSet().add(GAME_REVIEW_COUNT_CHANGE_SET_KEY, gameId.toString());
-        redisTemplate.opsForZSet().remove(StringUtils.format(GAME_RATING_KEY, gameId), String.valueOf(id));
+        gameMapper.refreshRating(gameId);
+        if (Objects.equals(review.getStatus(), 1)) {
+            redisCounterService.changeAndMark(StringUtils.format(REVIEW_COUNT_KEY, gameId),
+                    initialCount, -1L, GAME_STATS_COUNT_CHANGE_SET_KEY, gameId);
+        }
         likeService.clearLikeCache(LIKE_TYPE_REVIEW, id);
     }
 
+    // 批量查询作者及点赞状态，将评价实体复制为可展示的响应视图。
     private List<GameReviewVO> getVOS(List<GameReview> records) {
         Set<Long> userIds = records.stream().map(GameReview::getUserId).collect(Collectors.toSet());
         Map<Long, User> userMap = null;
@@ -140,7 +176,7 @@ public class GameReviewServiceImpl extends ServiceImpl<GameReviewMapper, GameRev
             User user = userMap == null ? null : userMap.get(r.getUserId());
             if (user != null) {
                 vo.setUsername(user.getUsername());
-                vo.setAvatarUrl(user.getAvatarUrl());
+                vo.setAvatarUrl(com.catgal.server.storage.FileAccessPaths.avatar(user));
             }
 
             // 设置是否为当前用户评论

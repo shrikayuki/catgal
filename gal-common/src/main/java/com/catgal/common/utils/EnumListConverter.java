@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 枚举列表与数据库逗号分隔编码互转，统一处理接口列表和持久化形式。
+ */
 package com.catgal.common.utils;
 
 import com.catgal.common.enums.CodeEnum;

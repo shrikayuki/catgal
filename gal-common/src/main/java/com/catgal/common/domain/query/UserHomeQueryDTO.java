@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 用户主页分页入口，tab 选择评论、评价、收藏夹或发布资源策略。
+ */
 package com.catgal.common.domain.query;
 
 import com.catgal.common.enums.UserHomeTabEnum;
@@ -36,7 +40,7 @@ public class UserHomeQueryDTO extends PageQuery {
 
     @Schema(description = "目标用户ID（不传则查当前登录用户）")
     @Min(1)
-    private Integer userId;
+    private Long userId;
 
     @Schema(description = "Tab类型：1-评论，2-评价，3-收藏夹，4-发布资源", example = "1")
     @NotNull(message = "Tab不能为空")

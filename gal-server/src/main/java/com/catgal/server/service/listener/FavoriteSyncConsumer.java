@@ -1,56 +1,43 @@
+/*
+ * 阅读说明
+ * 收藏 MQ 通知只定位同步目标，消费者根据当前完整快照校准数据库。
+ */
 package com.catgal.server.service.listener;
 
 import Message.FavoriteSyncMessage;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.catgal.common.constants.MqConstants;
-import com.catgal.server.domain.po.FavoriteItem;
-import com.catgal.server.mapper.FavoriteItemMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
-import org.springframework.dao.DuplicateKeyException;
+import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.stereotype.Component;
+
+
+import static Message.FavoriteSyncMessage.FAVORITE;
+import static Message.FavoriteSyncMessage.UNFAVORITE;
 
 @RequiredArgsConstructor
 @Slf4j
 @Component
 public class FavoriteSyncConsumer {
 
-    private final FavoriteItemMapper favoriteItemMapper;
+    private final com.catgal.server.service.IFavoriteItemService favoriteService;
 
-    @RabbitListener(queues = MqConstants.Queue.FAVORITE_SYNC_QUEUE)
+    @RabbitListener(queues = MqConstants.Queue.FAVORITE_SYNC_QUEUE,
+            containerFactory = "favoriteListenerContainerFactory")
+    // 校验消息定位字段后执行当前关系校准，异常继续交给有限重试和错误恢复。
     public void handleFavoriteSync(FavoriteSyncMessage message) {
-        log.info("收到收藏同步消息: {}", message);
+        validateMessage(message);
+        // operation 仅用于兼容原消息格式，迟到通知必须读取当前已校验状态。
+        favoriteService.syncFavorite(message.getFolderId(), message.getUserId(), message.getGameId());
+    }
 
-        // 直接用唯一键判断：插入时重复则忽略，删除时存在则删
-        if (message.getOperation() == 1) {
-            // 收藏：插入记录（利用唯一键 uk_folder_game，重复自动失败）
-            FavoriteItem item = new FavoriteItem();
-            item.setUserId(message.getUserId());
-            item.setFolderId(message.getFolderId());
-            item.setGameId(message.getGameId());
-
-            try {
-                favoriteItemMapper.insert(item);
-                log.info("收藏记录已写入DB, folderId={}, gameId={}", message.getFolderId(), message.getGameId());
-            } catch (DuplicateKeyException e) {
-                // 已存在，幂等处理，不报错
-                log.debug("收藏记录已存在，幂等忽略, folderId={}, gameId={}", message.getFolderId(), message.getGameId());
-            }
-        } else {
-            // 取消收藏：删除记录（存在则删，不存在也返回成功）
-            int deleted = favoriteItemMapper.delete(
-                    new LambdaQueryWrapper<FavoriteItem>()
-                            .eq(FavoriteItem::getUserId, message.getUserId())
-                            .eq(FavoriteItem::getFolderId, message.getFolderId())
-                            .eq(FavoriteItem::getGameId, message.getGameId())
-            );
-
-            if (deleted > 0) {
-                log.info("收藏记录已从DB删除, folderId={}, gameId={}", message.getFolderId(), message.getGameId());
-            } else {
-                log.debug("收藏记录不存在，幂等忽略, folderId={}, gameId={}", message.getFolderId(), message.getGameId());
-            }
+    private void validateMessage(FavoriteSyncMessage message) {
+        if (message == null || message.getUserId() == null || message.getUserId() <= 0
+                || message.getFolderId() == null || message.getFolderId() <= 0
+                || message.getGameId() == null || message.getGameId() <= 0
+                || (!FAVORITE.equals(message.getOperation()) && !UNFAVORITE.equals(message.getOperation()))) {
+            throw new AmqpRejectAndDontRequeueException("收藏同步消息字段或操作类型无效");
         }
     }
 }

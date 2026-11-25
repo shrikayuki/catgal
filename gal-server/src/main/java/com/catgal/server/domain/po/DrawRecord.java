@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 抽奖记录的数据库映射对象，对应 draw_record 表。
+ * MyBatis-Plus 通过字段与映射注解读写记录，Controller 使用专用视图承载展示字段。
+ */
 package com.catgal.server.domain.po;
 
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -30,6 +35,11 @@ public class DrawRecord implements Serializable {
      */
     @TableId(value = "id", type = IdType.AUTO)
     private Long id;
+
+    /**
+     * 抽奖业务幂等号，MQ 重投时保持不变。
+     */
+    private String bizId;
 
     /**
      * 奖品ID

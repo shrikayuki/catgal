@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 旧聊天入口的会话 ID 历史仓储接口，完整消息持久化由 Python 模块负责。
+ */
 package com.catgal.server.config.repository;
 
 import java.util.List;

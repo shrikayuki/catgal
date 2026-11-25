@@ -1,5 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.catgal.server.mapper.ResourceMapper">
+    <!-- ResourceMapper 的复杂 SQL 映射，namespace 与 Java Mapper 全限定名对应。 -->
+
+    <!-- 批量更新资源下载量 -->
+    <!-- 按资源 ID 批量写入下载快照，调用后只确认期间没有再次变化的计数。 -->
+    <update id="batchUpdateResourceStats" parameterType="list">
+        UPDATE resource
+        SET download_count = CASE id
+        <foreach collection="list" item="resource" separator=" ">
+            WHEN #{resource.id} THEN #{resource.downloadCount}
+        </foreach>
+        END
+        WHERE id IN
+        <foreach collection="list" item="resource" open="(" separator="," close=")">
+            #{resource.id}
+        </foreach>
+    </update>
 
 </mapper>

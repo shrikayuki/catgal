@@ -1,0 +1,31 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "refresh_interval": "1s"
+  },
+  "mappings": {
+    "_meta": {"schema_version": 2},
+    "dynamic": "strict",
+    "properties": {
+      "id": {"type": "long"},
+      "version": {"type": "long"},
+      "name": {"type": "wildcard"},
+      "introduction": {"type": "wildcard"},
+      "tag_names": {"type": "wildcard"},
+      "company_names": {"type": "wildcard"},
+      "status": {"type": "integer"},
+      "release_date": {"type": "date", "format": "strict_date"},
+      "create_time": {"type": "date", "format": "strict_date_optional_time"},
+      "rating": {"type": "double"},
+      "view_count": {"type": "long"},
+      "download_count": {"type": "long"},
+      "favorite_count": {"type": "long"},
+      "types": {"type": "keyword"},
+      "languages": {"type": "keyword"},
+      "platforms": {"type": "keyword"},
+      "tag_ids": {"type": "long"},
+      "company_ids": {"type": "long"}
+    }
+  }
+}

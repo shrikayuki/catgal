@@ -1,0 +1,115 @@
+/* 蓝白主题沿用 tokens.css；真红主题只替换视觉变量，组件共用同一套业务交互。 */
+:root[data-theme='shinku'] {
+  --color-bg: #fff9f2;
+  --color-surface: #fffdfa;
+  --color-surface-soft: #faf0e9;
+  --color-brand-50: #fcf0ee;
+  --color-brand-100: #f4ddd9;
+  --color-brand-300: #dfb1a7;
+  --color-brand-400: #cc8d82;
+  --color-brand-500: #b66a6b;
+  --color-brand-600: #a34a59;
+  --color-brand-700: #8c364c;
+  --color-brand-800: #722d42;
+  --color-brand-900: #4e2836;
+  --color-accent-pink: #d79a9f;
+  --color-accent-violet: #8e6981;
+  --color-text-primary: #3d2b32;
+  --color-text-secondary: #71565b;
+  --color-text-muted: #85676c;
+  --color-border: #eadbd1;
+  --color-border-strong: #d8bdb0;
+  --color-focus: rgb(163 74 89 / 32%);
+  --color-warning: #99651f;
+  --color-danger: #ad3e50;
+  --shadow-sm: 0 3px 14px rgb(100 51 52 / 5%);
+  --shadow-md: 0 12px 32px rgb(100 51 52 / 9%);
+  --shadow-lg: 0 24px 60px rgb(100 51 52 / 14%);
+  --header-bg: rgb(255 249 242 / 94%);
+  --header-border: rgb(218 192 177 / 68%);
+  --brand-shadow: 0 8px 18px rgb(140 54 76 / 18%);
+}
+
+:root[data-theme='shinku'] .base-button--primary {
+  box-shadow: 0 6px 18px rgb(140 54 76 / 16%);
+}
+:root[data-theme='shinku'] .base-button--primary:hover:not(:disabled) {
+  box-shadow: 0 9px 24px rgb(140 54 76 / 23%);
+}
+:root[data-theme='shinku'] .auth-page,
+:root[data-theme='shinku'] .profile-hero,
+:root[data-theme='shinku'] .game-hero {
+  background: radial-gradient(ellipse at 85% 15%, #f5e1ce, transparent 55%),
+    linear-gradient(120deg, #f9eae4, #fff9f2 58%, #f7e9e9);
+}
+:root[data-theme='shinku'] .auth-page__wash span,
+:root[data-theme='shinku'] .profile-hero__orb {
+  border-color: rgb(163 74 89 / 13%);
+}
+:root[data-theme='shinku'] .auth-card {
+  border-color: var(--color-border-strong);
+  background: rgb(255 253 250 / 94%);
+  box-shadow: var(--shadow-lg);
+}
+:root[data-theme='shinku'] .auth-story h1 {
+  font-size: clamp(2.1rem, 4vw, 3.6rem);
+  line-height: 1.4;
+  text-wrap: balance;
+}
+:root[data-theme='shinku'] .game-hero__cover { box-shadow: var(--shadow-lg); }
+:root[data-theme='shinku'] .ai-messages {
+  background: linear-gradient(155deg, #fff9f2, #fdf6f4);
+}
+
+/* 雾樱用梅灰承载正文与操作按钮，琥珀色用于强调，公共控件继续复用主题变量。 */
+:root[data-theme='mist'] {
+  --color-bg: #fcf8f5;
+  --color-surface: #fffdfb;
+  --color-surface-soft: #f8eeee;
+  --color-brand-50: #faf0f2;
+  --color-brand-100: #f0dce3;
+  --color-brand-300: #d3a7b7;
+  --color-brand-400: #bb859b;
+  --color-brand-500: #a16b80;
+  --color-brand-600: #87536a;
+  --color-brand-700: #66445a;
+  --color-brand-800: #54384c;
+  --color-brand-900: #402b3b;
+  --color-accent-pink: #d5a6bb;
+  --color-accent-violet: #8b778e;
+  --color-accent-amber: #f0cc87;
+  --color-text-primary: #342a33;
+  --color-text-secondary: #655360;
+  --color-text-muted: #776471;
+  --color-border: #ebdde1;
+  --color-border-strong: #d9c1cb;
+  --color-focus: rgb(135 83 106 / 35%);
+  --color-success: #357254;
+  --color-warning: #876023;
+  --color-danger: #a63f55;
+  --shadow-sm: 0 4px 16px rgb(82 50 71 / 6%);
+  --shadow-md: 0 13px 32px rgb(82 50 71 / 10%);
+  --shadow-lg: 0 22px 54px rgb(82 50 71 / 15%);
+  --header-bg: rgb(255 253 251 / 93%);
+  --header-border: rgb(217 193 203 / 68%);
+  --brand-shadow: 0 5px 16px rgb(102 68 90 / 18%);
+  --mist-surface: radial-gradient(ellipse at 90% 0%, #f6e4c9, transparent 50%),
+    linear-gradient(135deg, #f8e8ed, var(--color-bg) 70%);
+}
+
+:root[data-theme='mist'] .brand__mark { color: var(--color-accent-amber); }
+
+:root[data-theme='mist'] .auth-page,
+:root[data-theme='mist'] .profile-hero,
+:root[data-theme='mist'] .game-hero,
+:root[data-theme='mist'] .welcome-intro,
+:root[data-theme='mist'] .resource-editor__heading {
+  background: var(--mist-surface);
+}
+
+:root[data-theme='mist'] .admin-workspace {
+  background: linear-gradient(155deg, var(--color-brand-100), var(--color-bg) 24rem);
+}
+
+:root[data-theme='mist'] .auth-card { background: var(--color-surface); }
+:root[data-theme='mist'] .ai-messages { background: linear-gradient(155deg, var(--color-bg), #fbf2f5); }

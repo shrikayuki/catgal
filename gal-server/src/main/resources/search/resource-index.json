@@ -1,0 +1,16 @@
+{
+  "settings": {"number_of_shards": 1, "number_of_replicas": 0, "refresh_interval": "1s"},
+  "mappings": {
+    "_meta": {"schema_version": 1},
+    "dynamic": "strict",
+    "properties": {
+      "id": {"type": "long"},
+      "version": {"type": "long"},
+      "deleted": {"type": "boolean"},
+      "name": {"type": "wildcard"},
+      "status": {"type": "integer"},
+      "game_id": {"type": "long"},
+      "user_id": {"type": "long"}
+    }
+  }
+}

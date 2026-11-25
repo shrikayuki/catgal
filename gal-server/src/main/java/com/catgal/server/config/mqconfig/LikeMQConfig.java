@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 按评论、评价和资源划分点赞计数队列，路由与业务类型对应。
+ */
 package com.catgal.server.config.mqconfig;
 
 import com.catgal.common.utils.StringUtils;

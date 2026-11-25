@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 项目异步任务执行器配置，线程池容量和队列影响后台任务吞吐与排队。
+ */
 package com.catgal.server.config;
 
 import org.springframework.context.annotation.Bean;

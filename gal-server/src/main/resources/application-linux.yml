@@ -1,0 +1,22 @@
+# 阅读说明
+# Linux 容器 profile，Nginx 提供统一入口，Java 通过容器网络访问 AI 服务。
+# 依赖配置来自部署私有环境文件，端口、路径前缀及超时需与 compose 和代理配置对应。
+
+# Reuse the existing environment-backed middleware configuration.
+spring:
+  config:
+    import: classpath:application-dev.yml
+  flyway:
+    enabled: false
+
+server:
+  shutdown: graceful
+
+logging:
+  level:
+    com.gal: INFO
+    com.catgal: INFO
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl

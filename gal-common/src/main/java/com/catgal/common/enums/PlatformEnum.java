@@ -1,3 +1,7 @@
+/*
+ * 阅读说明
+ * 游戏平台枚举，游戏筛选与资源资料共用编码约定。
+ */
 package com.catgal.common.enums;
 
 import com.baomidou.mybatisplus.annotation.EnumValue;

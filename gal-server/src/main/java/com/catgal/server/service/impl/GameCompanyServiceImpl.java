@@ -1,3 +1,8 @@
+/*
+ * 阅读说明
+ * 游戏与会社关联的 MyBatis-Plus 实体服务。
+ * 本类保留基础 CRUD，完整替换和关联锁校验集中在 GameRelationsService。
+ */
 package com.catgal.server.service.impl;
 
 import com.catgal.server.domain.po.GameCompany;

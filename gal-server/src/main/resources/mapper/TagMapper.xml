@@ -1,5 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.catgal.server.mapper.TagMapper">
+    <!-- TagMapper 的复杂 SQL 映射，namespace 与 Java Mapper 全限定名对应。 -->
+    <!-- 事务内排他锁定资料行并读取 revision，删除与编辑据此核对当前版本。 -->
+    <select id="selectRevisionForUpdate" resultType="java.lang.Long">
+        SELECT revision FROM tag WHERE id = #{id} FOR UPDATE
+    </select>
 
+    <!-- 按 ID 升序共享锁定关联资料，调用方已经持有游戏行锁，ids 由业务层验证非空。 -->
+    <select id="selectIdsForShare" resultType="java.lang.Long">
+        SELECT id FROM tag WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        ORDER BY id FOR SHARE
+    </select>
 </mapper>

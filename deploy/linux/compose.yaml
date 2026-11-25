@@ -1,0 +1,83 @@
+name: catgal-app
+
+x-runtime: &runtime
+  restart: unless-stopped
+  init: true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  java:
+    <<: *runtime
+    image: catgal/java:${APP_VERSION:?Set APP_VERSION}
+    build:
+      context: ../..
+      dockerfile: ${JAVA_DOCKERFILE:-gal-server/Dockerfile}
+      labels:
+        com.catgal.build-fingerprint: ${JAVA_BUILD_FINGERPRINT:-unknown}
+    env_file:
+      - path: ./secrets/java.env
+        format: raw
+    environment:
+      SPRING_PROFILES_ACTIVE: linux
+      SERVER_PORT: "8080"
+      FLYWAY_ENABLED: "false"
+      AI_SERVICE_BASE_URL: http://ai:8090
+      LOAD_TEST_TARGET_PORT: "8080"
+      LOAD_TEST_TARGET_PREFIX: ""
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70 -XX:+ExitOnOutOfMemoryError"
+    mem_limit: ${JAVA_MEMORY_LIMIT:-1024m}
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD", "java", "-cp", "/opt/health", "HealthCheck"]
+      start_period: 90s
+      interval: 30s
+      timeout: 8s
+      retries: 3
+
+  ai:
+    <<: *runtime
+    image: catgal/ai:${APP_VERSION:?Set APP_VERSION}
+    build:
+      context: ../../ai-service
+      labels:
+        com.catgal.build-fingerprint: ${AI_BUILD_FINGERPRINT:-unknown}
+    env_file:
+      - path: ./secrets/ai.env
+        format: raw
+    environment:
+      AI_APP_ENV: production
+      AI_JAVA_TOOLS_BASE_URL: http://java:8080
+    mem_limit: ${AI_MEMORY_LIMIT:-768m}
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/ready', timeout=5).close()"]
+      start_period: 45s
+      interval: 30s
+      timeout: 8s
+      retries: 3
+
+  web:
+    <<: *runtime
+    image: catgal/web:${APP_VERSION:?Set APP_VERSION}
+    build:
+      context: ../..
+      dockerfile: ${WEB_DOCKERFILE:-frontend/Dockerfile}
+      labels:
+        com.catgal.build-fingerprint: ${WEB_BUILD_FINGERPRINT:-unknown}
+    ports:
+      - "${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-8088}:80"
+    mem_limit: 128m
+    depends_on:
+      java:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

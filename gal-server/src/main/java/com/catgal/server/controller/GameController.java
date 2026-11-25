@@ -1,3 +1,9 @@
+/*
+ * 阅读说明
+ * 分页查询游戏、根据游戏id查游戏信息、随机一部游戏的 HTTP 入口。
+ * 路由前缀 /game，请求绑定后委托 IGameService。
+ * 参数注解决定路径、查询或正文绑定方式，业务可见性与数据组装在服务层核验。
+ */
 package com.catgal.server.controller;
 
 
