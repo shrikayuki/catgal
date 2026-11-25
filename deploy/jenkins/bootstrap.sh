@@ -95,7 +95,8 @@ for attempt in {1..24}; do
 done
 curl -fsS --max-time 5 http://127.0.0.1:8089/login >/dev/null
 listeners=$(ss -Hltn 'sport = :8089' | awk '{print $4}')
-if [[ $listeners != 127.0.0.1:8089 ]]; then
+if [[ $listeners != 127.0.0.1:8089 && $listeners != '[::ffff:127.0.0.1]:8089' ]]; then
+    printf 'Observed TCP listeners on port 8089:\n%s\n' "$listeners" >&2
     systemctl stop jenkins.service
     echo 'Jenkins bound outside loopback; stopped for inspection.' >&2
     exit 1
