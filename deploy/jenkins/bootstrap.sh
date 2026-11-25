@@ -20,7 +20,7 @@ local_package=${1:-}
 test -f "$app/.deploy/state.json"
 docker compose version
 curl -fsS --max-time 10 http://127.0.0.1:8088/health/live >/dev/null
-if ! systemctl is-active --quiet jenkins.service && ss -Hln 'sport = :8089' | grep -q .; then
+if ! systemctl is-active --quiet jenkins.service && ss -Hltn 'sport = :8089' | grep -q .; then
     echo 'Port 8089 is already in use.' >&2
     exit 1
 fi
@@ -94,7 +94,8 @@ for attempt in {1..24}; do
     sleep 5
 done
 curl -fsS --max-time 5 http://127.0.0.1:8089/login >/dev/null
-if ss -Hln 'sport = :8089' | awk '{print $4}' | grep -vxF '127.0.0.1:8089' | grep -q .; then
+listeners=$(ss -Hltn 'sport = :8089' | awk '{print $4}')
+if [[ $listeners != 127.0.0.1:8089 ]]; then
     systemctl stop jenkins.service
     echo 'Jenkins bound outside loopback; stopped for inspection.' >&2
     exit 1
